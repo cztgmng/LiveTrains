@@ -1,0 +1,85 @@
+﻿@using LiveTrains.Services
+
+<div class="train-details-box">
+    @if (TrainDetails != null)
+    {
+        <div class="train-details-header">
+            <img src="@GetCarrierIconUrl(TrainDetails.Type)" alt="@TrainDetails.Carrier" class="carrier-logo" />
+            <div class="train-title">
+                <h3>@TrainDetails.Type @TrainDetails.Number</h3>
+                @if (!string.IsNullOrEmpty(TrainDetails.RouteName))
+                {
+                    <h4>@TrainDetails.RouteName</h4>
+                }
+            </div>
+            <button class="close-button" @onclick="OnClose">×</button>
+        </div>
+        <div class="train-details-content">
+            <div class="route-info">
+                <div class="station start-station">
+                    <div class="station-dot start-dot"></div>
+                    <div class="station-name">@TrainDetails.StartStationName</div>
+                </div>
+                <div class="route-line"></div>
+                <div class="station end-station">
+                    <div class="station-dot end-dot"></div>
+                    <div class="station-name">@TrainDetails.EndStationName</div>
+                </div>
+            </div>
+            <div class="train-details-info">
+                <div class="info-row">
+                    <span class="info-label">Carrier:</span>
+                    <span class="info-value">@TrainDetails.Carrier</span>
+                </div>
+                @if (!string.IsNullOrEmpty(TrainDetails.RouteNumber))
+                {
+                    <div class="info-row">
+                        <span class="info-label">Route number:</span>
+                        <span class="info-value">@TrainDetails.RouteNumber</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(TrainDetails.TrackingUrl))
+                {
+                    <div class="info-row link-row">
+                        <a href="@TrainDetails.TrackingUrl" target="_blank" class="tracking-link">
+                            View on Portal Pasażera <span class="external-icon">↗</span>
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="train-details-loading">
+            <p>Loading train details...</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public TrainDetails? TrainDetails { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private string GetCarrierIconUrl(string carrier)
+    {
+        return carrier switch
+        {
+            "IC" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTudaL7viYZdPkjE6I_ae3dROs1ZARywfz1ISyvzNNxKMg7B0l1XxTOiCb5R93_",
+            "PR" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcShBZqpAHnRCy4-XJFYOpT1FB7Z9Hi3AMbR8Dogpsnj5lG4NH1tndbWIVAJsxYO",
+            "KW" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSx1jf6nxAv6vG8Eh8GMeG6M4QVvs-sd_oqEW9gtggssgWzkHFrrm4_lq6vEjB9",
+            "AR" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTV5nvINCi-sHP3nq4DfyqnlCPvMWMoWScdUMgq3rf3Sqt1S9pTy2dY31zqILcJ",
+            "KS" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT812gFd2fScPbg1H8WTcLSSdPLr9lfUpW3CfGb3Q24v-rwiqCK3gHvTyGZi28_",
+            "KD" => "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSWEd1ADcEp8OZEuCBKqCP5RrO3ofo6YMASk1qUMNkLvTi59oOPR6myIBVeIlw",
+            "KM" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSpnufJ7waXBOck26ADz0COZAuDGD13FnNYYj5gVIdegrdv_FgJiDiyL1eJN9_x",
+            "SKM" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRv1Cf4wQJ3iw5a0amylbxcWOyhsH4nRQ00QgSmiLxgifYYUFOjsvHhwWvmp1db",
+            "SKMT" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4tnUGPLmH0JGcxnChJETsYDw5nIj8Wcol00Jdl-T5qTTpHSEPPiT3FWRuxNdu",
+            "ŁKA" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSVlWBUS9YeV2_oQsB3-ldmOtT_DIFZAlxeCAGObCN_vaU4bbjBkwXGhBKk-4Fq",
+            "KMŁ" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw",
+            _ => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX16d"
+        };
+    }
+}

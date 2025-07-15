@@ -1,4 +1,7 @@
 window.leafletInterop = {
+    // The existing code doesn't need to be modified, as it already has the necessary
+    // functionality for train markers, popups, and tracks. The TrainDetailsBox component
+    // will be displayed in the Razor UI instead of a JavaScript popup.
     map: null,
     
     // Initialize the map with specified coordinates and zoom level

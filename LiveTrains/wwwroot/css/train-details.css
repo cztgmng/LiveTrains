@@ -1,0 +1,171 @@
+/* Train Details Box Styles */
+.train-details-container {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 350px;
+    width: 100%;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    pointer-events: auto;
+}
+
+.train-details-box {
+    background-color: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.train-details-header {
+    padding: 15px;
+    display: flex;
+    align-items: center;
+    background-color: #004494;
+    color: white;
+    position: relative;
+}
+
+.carrier-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: white;
+    padding: 3px;
+    margin-right: 10px;
+    object-fit: contain;
+}
+
+.train-title {
+    flex: 1;
+}
+
+.train-title h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.train-title h4 {
+    margin: 5px 0 0 0;
+    font-size: 14px;
+    font-weight: 400;
+    opacity: 0.9;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0 5px;
+    position: absolute;
+    top: 10px;
+    right: 15px;
+}
+
+.train-details-content {
+    padding: 15px;
+}
+
+.route-info {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.station {
+    display: flex;
+    align-items: center;
+    padding: 5px 0;
+}
+
+.station-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 12px;
+}
+
+.start-dot {
+    background-color: #4caf50;
+}
+
+.end-dot {
+    background-color: #f44336;
+}
+
+.station-name {
+    font-weight: 500;
+}
+
+.route-line {
+    width: 2px;
+    background-color: #004494;
+    height: 30px;
+    margin-left: 5px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.train-details-info {
+    margin-top: 15px;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 15px;
+}
+
+.info-row {
+    display: flex;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.info-label {
+    font-weight: 500;
+    min-width: 100px;
+    color: #555;
+}
+
+.info-value {
+    font-weight: 400;
+}
+
+.link-row {
+    margin-top: 12px;
+}
+
+.tracking-link {
+    color: #004494;
+    text-decoration: none;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+}
+
+.external-icon {
+    margin-left: 4px;
+    font-size: 12px;
+}
+
+.train-details-loading {
+    padding: 20px;
+    text-align: center;
+    color: #555;
+}
+
+/* Add media query for mobile */
+@media (max-width: 600px) {
+    .train-details-container {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        max-width: none;
+        width: 100%;
+    }
+    
+    .train-details-box {
+        border-radius: 8px 8px 0 0;
+    }
+}

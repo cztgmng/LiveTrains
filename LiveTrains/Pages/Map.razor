@@ -3,9 +3,17 @@
 @inject LiveTrainTrackingService TrainTrackingService
 @implements IAsyncDisposable
 @using LiveTrains.Services
+@using LiveTrains.Components
 @using System.Collections.Generic
 
-<div class="map-container" id="mapId"></div>
+<div class="map-container" id="mapId">
+    @if (currentTrainDetails != null)
+    {
+        <div class="train-details-container">
+            <TrainDetailsBox TrainDetails="currentTrainDetails" OnClose="ClearTrainDetails" />
+        </div>
+    }
+</div>
 
 @code {
     private IJSObjectReference? _module;
@@ -26,6 +34,9 @@
 
     // Store the last drawn track
     private List<(double lat, double lng)>? currentTrack;
+    
+    // Store the currently selected train details
+    private TrainDetails? currentTrainDetails;
     
     // Store the currently selected train for highlighting
     private string? selectedTrainNumber;
@@ -86,7 +97,13 @@
         
         try 
         {
-            // Call ShowTrack API via service
+            // Show loading state
+            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", true);
+            
+            // Get detailed train information
+            currentTrainDetails = await TrainTrackingService.GetTrainDetailsAsync(trainNumber);
+            
+            // Get and draw the train track
             var trackInfo = await TrainTrackingService.GetTrainTrackAsync(trainNumber);
             
             if (trackInfo != null && trackInfo.Coordinates.Count > 0)
@@ -103,10 +120,17 @@
             {
                 Console.WriteLine("No track data received or empty track data");
             }
+            
+            // Hide loading indicator
+            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", false);
+            
+            // Trigger UI update
+            StateHasChanged();
         }
         catch (Exception ex) 
         {
-            Console.WriteLine($"Error fetching train track: {ex.Message}");
+            Console.WriteLine($"Error fetching train data: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", false);
         }
         
         // Update train markers to highlight the selected train
@@ -174,6 +198,13 @@
         {
             Console.WriteLine($"Error invalidating size: {ex.Message}");
         }
+    }
+
+    // Clear train details and track when no longer needed
+    private async Task ClearTrainDetails()
+    {
+        currentTrainDetails = null;
+        await ClearTrackAsync();
     }
 
     // Clear the track when no longer needed

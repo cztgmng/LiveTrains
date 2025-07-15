@@ -49,6 +49,20 @@ namespace LiveTrains.Services
         public string EndStationName { get; set; } = string.Empty;
     }
 
+    // Add this class after the TrainTrackInfo class
+    public class TrainDetails
+    {
+        public string Number { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Carrier { get; set; } = string.Empty;
+        public string StartStationName { get; set; } = string.Empty;
+        public string EndStationName { get; set; } = string.Empty;
+        public string RouteName { get; set; } = string.Empty; // a value
+        public string RouteNumber { get; set; } = string.Empty; // b value
+        public string TrackingUrl { get; set; } = string.Empty; // j value
+        public long TrainId { get; set; }
+    }
+
     public class LiveTrainTrackingService
     {
         private static readonly HttpClient client = new HttpClient();
@@ -567,6 +581,97 @@ namespace LiveTrains.Services
             
             trackInfo.Coordinates = coords;
             return trackInfo;
+        }
+
+        // Add method to get full train details
+        public async Task<TrainDetails> GetTrainDetailsAsync(string trainNumber)
+        {
+            var trackInfo = await GetTrainTrackAsync(trainNumber);
+            
+            // Find the train position data from our cache
+            var trainPosition = _trainIdMapping.TryGetValue(trainNumber, out var trainId) ? 
+                new TrainPosition { Number = trainNumber, TrainId = trainId } : 
+                null;
+            
+            var details = new TrainDetails
+            {
+                Number = trainNumber,
+                StartStationName = trackInfo.StartStationName,
+                EndStationName = trackInfo.EndStationName,
+                TrainId = trainId
+            };
+            
+            try
+            {
+                // Ensure we have a valid PID
+                if (string.IsNullOrEmpty(_mapPagePid))
+                {
+                    await GetMapPagePid();
+                    if (string.IsNullOrEmpty(_mapPagePid))
+                    {
+                        Debug.WriteLine("Failed to get PID for train details");
+                        return details;
+                    }
+                }
+                
+                // Same API call as GetTrainTrackAsync, but extract different data
+                var payload = new
+                {
+                    AM = 0,
+                    IS = trainId,
+                    PID = _mapPagePid
+                };
+                
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var request = CreateHttpRequest(HttpMethod.Post, "https://mapa.portalpasazera.pl/pl/Mapa/ShowTrack", content);
+                
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                var responseBody = await response.Content.ReadAsStringAsync();
+                
+                using var doc = JsonDocument.Parse(responseBody);
+                
+                // Extract additional train details from a[0].t
+                if (doc.RootElement.TryGetProperty("a", out var aElement) &&
+                    aElement.GetArrayLength() > 0 &&
+                    aElement[0].TryGetProperty("t", out var tElement))
+                {
+                    // Route name (a)
+                    if (tElement.TryGetProperty("a", out var aValue))
+                        details.RouteName = aValue.GetString() ?? string.Empty;
+                        
+                    // Route number (b)
+                    if (tElement.TryGetProperty("b", out var bValue))
+                        details.RouteNumber = bValue.GetString() ?? string.Empty;
+                        
+                    // Carrier (c)
+                    if (tElement.TryGetProperty("c", out var cValue))
+                        details.Carrier = cValue.GetString() ?? string.Empty;
+                        
+                    // Start station (d) - already got from trackInfo but could override if needed
+                    if (tElement.TryGetProperty("d", out var dValue))
+                        details.StartStationName = dValue.GetString() ?? details.StartStationName;
+                        
+                    // End station (f) - already got from trackInfo but could override if needed
+                    if (tElement.TryGetProperty("f", out var fValue))
+                        details.EndStationName = fValue.GetString() ?? details.EndStationName;
+                        
+                    // URL to tracking website (j)
+                    if (tElement.TryGetProperty("j", out var jValue))
+                        details.TrackingUrl = jValue.GetString() ?? string.Empty;
+                        
+                    // Train type (k)
+                    if (tElement.TryGetProperty("k", out var kValue))
+                        details.Type = kValue.GetString() ?? string.Empty;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error fetching train details: {ex.Message}");
+            }
+            
+            return details;
         }
     }
 }
