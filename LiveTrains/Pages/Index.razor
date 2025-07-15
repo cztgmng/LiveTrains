@@ -1,0 +1,39 @@
+@page "/"
+@using LiveTrains.Services
+
+
+<div style="height: 100%; width: 100%;">
+    <Map Latitude="52.069167" Longitude="19.480556" ZoomLevel="6" TrainPositions="@trainPositions" />
+</div>
+
+@code {
+    
+    private Map? mapComponent;
+
+    // Live train positions
+    private List<TrainPosition> trainPositions = new();
+
+    // Inject the live train tracking service
+    [Inject]
+    private LiveTrainTrackingService LiveTrainTrackingService { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to train position updates
+        LiveTrainTrackingService.OnTrainPositionsUpdated += positions =>
+        {
+            trainPositions = positions;
+            InvokeAsync(StateHasChanged);
+        };
+
+        await LiveTrainTrackingService.StartAsync();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            mapComponent = null;
+        }
+    }
+}

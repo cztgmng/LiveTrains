@@ -1,0 +1,572 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace LiveTrains.Services
+{
+    public class TrainPosition
+    {
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public string Number { get; set; }
+        public string Type { get; set; }
+        public string Carrier { get; set; }
+        public long TrainId { get; set; } // Added to store the train ID (IS value)
+    }
+
+    public class FirstNegotiateResponse
+    {
+        [JsonPropertyName("accessToken")]
+        public string AccessToken { get; set; } = string.Empty;
+
+        [JsonPropertyName("url")]
+        public string Url { get; set; } = string.Empty;
+    }
+
+    public class SecondNegotiateResponse
+    {
+        [JsonPropertyName("connectionId")]
+        public string ConnectionId { get; set; } = string.Empty;
+
+        [JsonPropertyName("connectionToken")]
+        public string ConnectionToken { get; set; } = string.Empty;
+    }
+
+    // Add this class to return track info including station names
+    public class TrainTrackInfo
+    {
+        public List<(double lat, double lng)> Coordinates { get; set; } = new();
+        public string StartStationName { get; set; } = string.Empty;
+        public string EndStationName { get; set; } = string.Empty;
+    }
+
+    public class LiveTrainTrackingService
+    {
+        private static readonly HttpClient client = new HttpClient();
+        private const byte RecordSeparatorByte = 0x1E; // Using byte instead of char for better binary handling
+        private CancellationTokenSource? _cts;
+        private MemoryStream _messageBuffer = new MemoryStream();
+        private string _mapPagePid = string.Empty; // Store PID from the map page
+        private Dictionary<string, long> _trainIdMapping = new Dictionary<string, long>(); // Map train numbers to IDs
+        private DateTime _lastPidFetchTime = DateTime.MinValue;
+        private readonly TimeSpan _pidCacheDuration = TimeSpan.FromHours(1); // Cache PID for 1 hour
+
+        public event Action<List<TrainPosition>>? OnTrainPositionsUpdated;
+
+        public async Task StartAsync()
+        {
+            _cts = new CancellationTokenSource();
+            //await GetMapPagePid(); // Fetch the PID at startup
+            _ = Task.Run(() => RunAsync(_cts.Token));
+        }
+
+        public void Stop()
+        {
+            _cts?.Cancel();
+        }
+
+        private async Task<bool> GetMapPagePid()
+        {
+
+            try
+            {
+                var request = CreateHttpRequest(HttpMethod.Get, "https://mapa.portalpasazera.pl/");
+                
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                
+                var content = await response.Content.ReadAsStringAsync();
+                
+                // Extract PID value from the page content
+                var pidStart = content.IndexOf("var PID = '") + 10;
+                if (pidStart > 10) // Found
+                {
+                    var end = content.IndexOf('\'', pidStart + 1);
+                    _mapPagePid = content.Substring(pidStart + 1, end - pidStart).Replace("\'", "").Replace("\n","").Replace("\r","");
+                    Debug.WriteLine($"Extracted PID: {_mapPagePid}");
+                    return true;
+                }
+                else
+                {
+                    Debug.WriteLine("Could not find PID in the map page");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error fetching map page: {ex.Message}");
+                return false;
+            }
+        }
+
+        private HttpRequestMessage CreateHttpRequest(HttpMethod method, string url, StringContent? content = null)
+        {
+            var request = new HttpRequestMessage(method, url);
+            
+            // Common headers for all requests
+            request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0");
+            request.Headers.Accept.ParseAdd("*/*");
+            
+            if (url.Contains("mapa.portalpasazera.pl"))
+            {
+                request.Headers.Referrer = new Uri("https://mapa.portalpasazera.pl/");
+                request.Headers.Add("Origin", "https://mapa.portalpasazera.pl");
+            }
+            
+            // Add content if provided
+            if (content != null)
+            {
+                request.Content = content;
+            }
+            
+            return request;
+        }
+
+        private async Task RunAsync(CancellationToken cancellationToken)
+        {
+            var firstNegotiateResponse = await FirstNegotiateRequest();
+            if (firstNegotiateResponse == null) return;
+
+            var secondNegotiateResponse = await SecondNegotiateRequest(firstNegotiateResponse);
+            if (secondNegotiateResponse == null) return;
+
+            await ConnectToWebSocket(firstNegotiateResponse, secondNegotiateResponse, cancellationToken);
+        }
+
+        private async Task<FirstNegotiateResponse?> FirstNegotiateRequest()
+        {
+            try
+            {
+                var requestMessage = CreateHttpRequest(HttpMethod.Post, "https://mapa.portalpasazera.pl/alltrainshub/negotiate?negotiateVersion=1");
+                requestMessage.Headers.Host = "mapa.portalpasazera.pl";
+                requestMessage.Headers.Add("Cookie", ".AspNetCore.Antiforgery._CeP9oe2XVY=CfDJ8Luexky4l9RKkJn_bkaK49P_ooGCMCjee2l0Wh4x0v6PqhrgwxGBD4UVjePTXjhxwOkOzFqzqYyS8o-N5zov8ywbX_6GXbGO7s93UIuRUzVj6OPm1iAOBTXCorNq4F7XJFbC9PwwOgx523DYfY5wu-A");
+                requestMessage.Content = new StringContent("", Encoding.UTF8, "application/json");
+
+                var response = await client.SendAsync(requestMessage);
+                response.EnsureSuccessStatusCode();
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                var negotiateResponse = JsonSerializer.Deserialize<FirstNegotiateResponse>(responseBody);
+                return negotiateResponse;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in FirstNegotiateRequest: {ex.Message}");
+                return null;
+            }
+        }
+
+        private async Task<SecondNegotiateResponse?> SecondNegotiateRequest(FirstNegotiateResponse firstResponse)
+        {
+            try
+            {
+                string secondRequestUrl = firstResponse.Url.Replace("/client/?", "/client/negotiate?");
+                var requestMessage = CreateHttpRequest(HttpMethod.Post, secondRequestUrl);
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", firstResponse.AccessToken);
+                requestMessage.Content = new StringContent("", Encoding.UTF8, "application/json");
+
+                var response = await client.SendAsync(requestMessage);
+                response.EnsureSuccessStatusCode();
+                var responseBody = await response.Content.ReadAsStringAsync();
+
+                var negotiateResponse = JsonSerializer.Deserialize<SecondNegotiateResponse>(responseBody);
+                return negotiateResponse;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in SecondNegotiateRequest: {ex.Message}");
+                return null;
+            }
+        }
+
+        private async Task ConnectToWebSocket(FirstNegotiateResponse firstResponse, SecondNegotiateResponse secondResponse, CancellationToken cancellationToken)
+        {
+            string wssUrl = firstResponse.Url.Replace("https://", "wss://")
+                          + $"&id={secondResponse.ConnectionToken}"
+                          + $"&access_token={firstResponse.AccessToken}";
+
+            using (var ws = new ClientWebSocket())
+            {
+                ws.Options.SetRequestHeader("Origin", "https://mapa.portalpasazera.pl");
+                ws.Options.SetRequestHeader("User-Agent", "Mozilla/5.0");
+
+                await ws.ConnectAsync(new Uri(wssUrl), cancellationToken);
+
+                await SendWebSocketMessage(ws, "{\"protocol\":\"json\",\"version\":1}", cancellationToken);
+                await ReceiveWebSocketMessage(ws, cancellationToken);
+
+                await SendWebSocketMessage(ws, "{\"arguments\":[\"PL\",6.7,48.35,10.5,55.53,28.3,0,true,\"ATM\",\"\"],\"invocationId\":\"0\",\"target\":\"RegisterParams\",\"type\":1}", cancellationToken);
+
+                while (ws.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+                {
+                    await ReceiveWebSocketMessage(ws, cancellationToken);
+                }
+                Trace.WriteLine("WebSocket closed.......");
+                await RunAsync(cancellationToken);
+            }
+        }
+
+        private async Task SendWebSocketMessage(ClientWebSocket ws, string message, CancellationToken cancellationToken)
+        {
+            var bytes = Encoding.UTF8.GetBytes(message);
+            var messageBytes = new byte[bytes.Length + 1];
+            Array.Copy(bytes, messageBytes, bytes.Length);
+            messageBytes[bytes.Length] = RecordSeparatorByte; // Add separator at the end
+            
+            var segment = new ArraySegment<byte>(messageBytes);
+            await ws.SendAsync(segment, WebSocketMessageType.Text, true, cancellationToken);
+        }
+
+        private async Task ReceiveWebSocketMessage(ClientWebSocket ws, CancellationToken cancellationToken)
+        {
+            var buffer = new byte[8192];
+            var receiveBuffer = new ArraySegment<byte>(buffer);
+            WebSocketReceiveResult result;
+            
+            try
+            {
+                do
+                {
+                    // Continue receiving until we get the full message
+                    result = await ws.ReceiveAsync(receiveBuffer, cancellationToken);
+                    
+                    // Write received bytes directly to memory stream
+                    _messageBuffer.Write(buffer, 0, result.Count);
+                    
+                    Trace.WriteLine($"Received chunk of {result.Count} bytes, EndOfMessage: {result.EndOfMessage}");
+                }
+                while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested);
+
+                // Only process complete messages when we've reached the end
+                if (result.EndOfMessage)
+                {
+                    Trace.WriteLine($"Complete message received, total buffer length: {_messageBuffer.Length}");
+                    ProcessCompleteMessages();
+                }
+            }
+            catch (WebSocketException ex)
+            {
+                Trace.WriteLine($"WebSocket error: {ex.Message}");
+                _messageBuffer.SetLength(0); // Clear buffer on error
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"General error in ReceiveWebSocketMessage: {ex.Message}");
+                _messageBuffer.SetLength(0); // Clear buffer on error
+            }
+        }
+
+        private void ProcessCompleteMessages()
+        {
+            try
+            {
+                // Get the full byte array
+                var messageBytes = _messageBuffer.ToArray();
+                
+                // Reset the memory stream for next message
+                _messageBuffer.SetLength(0);
+                
+                if (messageBytes.Length == 0)
+                {
+                    return;
+                }
+                
+                // Find all message boundaries (split by RecordSeparator)
+                List<int> separatorPositions = new List<int>();
+                for (int i = 0; i < messageBytes.Length; i++)
+                {
+                    if (messageBytes[i] == RecordSeparatorByte)
+                    {
+                        separatorPositions.Add(i);
+                    }
+                }
+
+                // Process each message separately
+                int startPos = 0;
+                foreach (int separatorPos in separatorPositions)
+                {
+                    int messageLength = separatorPos - startPos;
+                    if (messageLength <= 0)
+                    {
+                        startPos = separatorPos + 1;
+                        continue;
+                    }
+
+                    // Extract the message without the separator
+                    byte[] messageData = new byte[messageLength];
+                    Array.Copy(messageBytes, startPos, messageData, 0, messageLength);
+
+                    // Process the message data
+                    ProcessMessageBytes(messageData);
+
+                    startPos = separatorPos + 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Error in ProcessCompleteMessages: {ex.Message}");
+            }
+        }
+
+        private void ProcessMessageBytes(byte[] messageData)
+        {
+            try
+            {
+                // Convert to string for JSON detection
+                string jsonString = Encoding.UTF8.GetString(messageData);
+
+                if (string.IsNullOrEmpty(jsonString))
+                {
+                    return;
+                }
+                
+                if (jsonString.Contains("\"target\":\"TrainStatus\""))
+                {
+                    try
+                    {
+                        // Process directly from bytes to avoid string encoding/decoding issues
+                        var trainPositions = ParseTrainPositionsFromBytes(messageData);
+                        if (trainPositions != null && trainPositions.Count > 0)
+                        {
+                            OnTrainPositionsUpdated?.Invoke(trainPositions);
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        Trace.WriteLine($"JSON parsing error: {ex.Message}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Trace.WriteLine($"Error processing train positions: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Error processing message bytes: {ex.Message}");
+            }
+        }
+
+        private List<TrainPosition> ParseTrainPositionsFromBytes(byte[] messageBytes)
+        {
+            var positions = new List<TrainPosition>();
+            try
+            {
+                var options = new JsonDocumentOptions
+                {
+                    MaxDepth = 64,
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip
+                };
+
+                using var jsonDoc = JsonDocument.Parse(messageBytes, options);
+                var root = jsonDoc.RootElement;
+
+                // Validate the JSON structure before proceeding
+                if (!root.TryGetProperty("arguments", out var args) || 
+                    args.ValueKind != JsonValueKind.Array || 
+                    args.GetArrayLength() <= 1)
+                {
+                    return positions;
+                }
+
+                var trains = args[1];
+                foreach (var train in trains.EnumerateArray())
+                {
+                    try
+                    {
+                        // Check that all required properties exist
+                        if (!train.TryGetProperty("s", out var latitude) ||
+                            !train.TryGetProperty("d", out var longitude) ||
+                            !train.TryGetProperty("n", out var number) ||
+                            !train.TryGetProperty("p", out var type))
+                        {
+                            continue; // Skip this train if missing required properties
+                        }
+                        
+                        // Get carrier code - correct property is "pr" not "p"
+                        string carrier = "";
+                        if (train.TryGetProperty("pr", out var carrierProp))
+                        {
+                            carrier = carrierProp.GetString() ?? "";
+                        }
+
+                        // Extract train ID (IS value) - t property
+                        long trainId = 0;
+                        if (train.TryGetProperty("t", out var trainIdProp))
+                        {
+                            trainId = trainIdProp.GetInt64();
+                        }
+                        
+                        var trainNumberStr = number.GetString() ?? "";
+                        
+                        // Store train ID for later use with the ShowTrack API
+                        if (!string.IsNullOrEmpty(trainNumberStr) && trainId > 0)
+                        {
+                            _trainIdMapping[trainNumberStr] = trainId;
+                        }
+                        
+                        positions.Add(new TrainPosition
+                        {
+                            Latitude = latitude.GetDouble(),
+                            Longitude = longitude.GetDouble(),
+                            Number = trainNumberStr,
+                            Type = type.GetString() ?? "",
+                            Carrier = carrier,
+                            TrainId = trainId
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error processing train: {ex.Message}");
+                        continue;
+                    }
+                }
+                
+                return positions;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error parsing train positions: {ex}");
+                return new List<TrainPosition>();
+            }
+        }
+
+        // Modify the GetTrainTrackAsync method to return station names too
+        public async Task<TrainTrackInfo> GetTrainTrackAsync(string trainNumber)
+        {
+            var trackInfo = new TrainTrackInfo();
+            var coords = new List<(double lat, double lng)>();
+            
+            // Ensure we have a valid PID
+            if (string.IsNullOrEmpty(_mapPagePid))
+            {
+                bool success = await GetMapPagePid();
+                if (!success || string.IsNullOrEmpty(_mapPagePid))
+                {
+                    Debug.WriteLine("Failed to get PID for ShowTrack request");
+                    trackInfo.Coordinates = coords;
+                    return trackInfo;
+                }
+            }
+
+            try
+            {
+                // Look up train ID from mapping
+                if (!_trainIdMapping.TryGetValue(trainNumber, out long trainId))
+                {
+                    Debug.WriteLine($"Train ID not found for number: {trainNumber}");
+                    trackInfo.Coordinates = coords;
+                    return trackInfo;
+                }
+                
+                // Prepare request payload with the correct values
+                var payload = new
+                {
+                    AM = 0,
+                    IS = trainId,
+                    PID = _mapPagePid
+                };
+                
+                var json = JsonSerializer.Serialize(payload);
+                Debug.WriteLine($"ShowTrack request payload: {json}");
+                
+                // Use the common HTTP request creation method
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var request = CreateHttpRequest(HttpMethod.Post, "https://mapa.portalpasazera.pl/pl/Mapa/ShowTrack", content);
+
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                var responseBody = await response.Content.ReadAsStringAsync();
+                Debug.WriteLine($"ShowTrack response received, length: {responseBody.Length}");
+
+                using var doc = JsonDocument.Parse(responseBody);
+                
+                try 
+                {
+                    // Extract station names from a[0].t.d and a[0].t.f
+                    if (doc.RootElement.TryGetProperty("a", out var aElement) && 
+                        aElement.GetArrayLength() > 0 &&
+                        aElement[0].TryGetProperty("t", out var tElement))
+                    {
+                        if (tElement.TryGetProperty("d", out var dElement))
+                        {
+                            trackInfo.StartStationName = dElement.GetString() ?? "Start Station";
+                        }
+                        if (tElement.TryGetProperty("f", out var fElement))
+                        {
+                            trackInfo.EndStationName = fElement.GetString() ?? "End Station";
+                        }
+                    }
+                    
+                    // Navigate through the JSON structure to find the track coordinates
+                    // The track coordinates can be in root.a[0].r.s.rt, ct, rct, or dt (array of {s, d})
+                    JsonElement? pointsArray = null;
+                    if (doc.RootElement.TryGetProperty("a", out var a) && 
+                        a.GetArrayLength() > 0 &&
+                        a[0].TryGetProperty("r", out var r) &&
+                        r.TryGetProperty("s", out var sElement))
+                    {
+                        string[] possibleKeys = { "rt", "ct", "rct", "dt" };
+                        foreach (var key in possibleKeys)
+                        {
+                            if (sElement.TryGetProperty(key, out var arr) && arr.ValueKind == JsonValueKind.Array && arr.GetArrayLength() > 0)
+                            {
+                                pointsArray = arr;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (pointsArray != null)
+                    {
+                        foreach (var point in pointsArray.Value.EnumerateArray())
+                        {
+                            // With this block to handle array of coordinates:
+                            if (point.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var coord in point.EnumerateArray())
+                                {
+                                    var lat = coord.GetProperty("s").GetDouble();
+                                    var lng = coord.GetProperty("d").GetDouble();
+                                    coords.Add((lat, lng));
+                                }
+                            }
+                            else
+                            {
+                                var lat = point.GetProperty("s").GetDouble();
+                                var lng = point.GetProperty("d").GetDouble();
+                                coords.Add((lat, lng));
+                            }
+                        }
+                        Debug.WriteLine($"Extracted {coords.Count} track coordinates");
+                    }
+                    else
+                    {
+                        Debug.WriteLine("No track coordinates found in any of rt, ct, rct, dt");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error extracting track coordinates: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error fetching track: {ex.Message}");
+            }
+            
+            trackInfo.Coordinates = coords;
+            return trackInfo;
+        }
+    }
+}

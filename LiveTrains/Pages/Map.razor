@@ -1,0 +1,217 @@
+@page "/map"
+@inject IJSRuntime JSRuntime
+@inject LiveTrainTrackingService TrainTrackingService
+@implements IAsyncDisposable
+@using LiveTrains.Services
+@using System.Collections.Generic
+
+<div class="map-container" id="mapId"></div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Map>? _objectReference;
+    private List<TrainPosition> trainPositions = new();
+
+    [Parameter]
+    public double Latitude { get; set; } = 51.505;
+
+    [Parameter]
+    public double Longitude { get; set; } = -0.09;
+
+    [Parameter]
+    public int ZoomLevel { get; set; } = 13;
+
+    [Parameter]
+    public List<TrainPosition> TrainPositions { get; set; } = new();
+
+    // Store the last drawn track
+    private List<(double lat, double lng)>? currentTrack;
+    
+    // Store the currently selected train for highlighting
+    private string? selectedTrainNumber;
+
+    protected override void OnInitialized()
+    {
+        TrainTrackingService.OnTrainPositionsUpdated += positions =>
+        {
+            trainPositions = positions;
+            InvokeAsync(StateHasChanged);
+            UpdateTrainMarkersOnMap();
+        };
+        TrainTrackingService.StartAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _objectReference = DotNetObjectReference.Create(this);
+            await InitializeMapAsync();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Update train markers on the map
+        if (TrainPositions != null && TrainPositions.Count > 0)
+        {
+            await JSRuntime.InvokeVoidAsync("leafletInterop.updateTrainMarkers", TrainPositions);
+        }
+    }
+
+    private async Task InitializeMapAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync(
+                "leafletInterop.initializeMap", 
+                "mapId", 
+                Latitude, 
+                Longitude, 
+                ZoomLevel
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing map: {ex.Message}");
+        }
+    }
+
+    // Add this method to handle train marker clicks
+    [JSInvokable]
+    public async Task OnTrainMarkerClicked(string trainNumber)
+    {
+        Console.WriteLine($"Train clicked: {trainNumber}");
+        selectedTrainNumber = trainNumber;
+        
+        try 
+        {
+            // Call ShowTrack API via service
+            var trackInfo = await TrainTrackingService.GetTrainTrackAsync(trainNumber);
+            
+            if (trackInfo != null && trackInfo.Coordinates.Count > 0)
+            {
+                currentTrack = trackInfo.Coordinates;
+                Console.WriteLine($"Drawing track with {trackInfo.Coordinates.Count} points");
+                
+                // Draw track on map with station names
+                await JSRuntime.InvokeVoidAsync("leafletInterop.drawTrack", 
+                    trackInfo.Coordinates.Select(c => new[] { c.lat, c.lng }).ToList(),
+                    new { start = trackInfo.StartStationName, end = trackInfo.EndStationName });
+            }
+            else
+            {
+                Console.WriteLine("No track data received or empty track data");
+            }
+        }
+        catch (Exception ex) 
+        {
+            Console.WriteLine($"Error fetching train track: {ex.Message}");
+        }
+        
+        // Update train markers to highlight the selected train
+        UpdateTrainMarkersOnMap();
+    }
+
+    // Update train markers to be clickable
+    private void UpdateTrainMarkersOnMap()
+    {
+        JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
+        foreach (var train in trainPositions)
+        {
+            var iconUrl = GetCarrierIconUrl(train.Type);
+            var isSelected = train.Number == selectedTrainNumber;
+            
+            // Pass train number as identifier and the selected state
+            JSRuntime.InvokeVoidAsync("leafletInterop.addTrainMarkerWithClick", 
+                train.Latitude, train.Longitude, 
+                $"{train.Number} ({train.Type})", iconUrl, 
+                DotNetObjectReference.Create(this), train.Number, isSelected);
+        }
+    }
+
+    public async Task AddMarkerAsync(double lat, double lng, string? title = null)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync(
+                "leafletInterop.addMarker", 
+                lat, 
+                lng, 
+                title
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error adding marker: {ex.Message}");
+        }
+    }
+
+    public async Task SetViewAsync(double lat, double lng, int zoom)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync(
+                "leafletInterop.setView", 
+                lat, 
+                lng, 
+                zoom
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting view: {ex.Message}");
+        }
+    }
+
+    public async Task InvalidateSizeAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("leafletInterop.invalidateSize");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error invalidating size: {ex.Message}");
+        }
+    }
+
+    // Clear the track when no longer needed
+    public async Task ClearTrackAsync()
+    {
+        currentTrack = null;
+        selectedTrainNumber = null;
+        await JSRuntime.InvokeVoidAsync("leafletInterop.clearTrack");
+        UpdateTrainMarkersOnMap();
+    }
+
+    private string GetCarrierIconUrl(string carrier)
+    {
+        // Map carrier codes to icon URLs - same as before
+        return carrier switch
+        {
+            "IC" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTudaL7viYZdPkjE6I_ae3dROs1ZARywfz1ISyvzNNxKMg7B0l1XxTOiCb5R93_",
+            "PR" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcShBZqpAHnRCy4-XJFYOpT1FB7Z9Hi3AMbR8Dogpsnj5lG4NH1tndbWIVAJsxYO",
+            "KW" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSx1jf6nxAv6vG8Eh8GMeG6M4QVvs-sd_oqEW9gtggssgWzkHFrrm4_lq6vEjB9",
+            "AR" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTV5nvINCi-sHP3nq4DfyqnlCPvMWMoWScdUMgq3rf3Sqt1S9pTy2dY31zqILcJ",
+            "KS" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT812gFd2fScPbg1H8WTcLSSdPLr9lfUpW3CfGb3Q24v-rwiqCK3gHvTyGZi28_",
+            "KD" => "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSWEd1ADcEp8OZEuCBKqCP5RrO3ofo6YMASk1qUMNkLvTi59oOPR6myIBVeIlw",
+            "KM" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSpnufJ7waXBOck26ADz0COZAuDGD13FnNYYj5gVIdegrdv_FgJiDiyL1eJN9_x",
+            "SKM" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRv1Cf4wQJ3iw5a0amylbxcWOyhsH4nRQ00QgSmiLxgifYYUFOjsvHhwWvmp1db",
+            "SKMT" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4tnUGPLmH0JGcxnChJETsYDw5nIj8Wcol00Jdl-T5qTTpHSEPPiT3FWRuxNdu",
+            "£KA" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSVlWBUS9YeV2_oQsB3-ldmOtT_DIFZAlxeCAGObCN_vaU4bbjBkwXGhBKk-4Fq",
+            "KM£" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw",
+            _ => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX16d"
+        };
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.DisposeAsync();
+        }
+
+        _objectReference?.Dispose();
+    }
+}
