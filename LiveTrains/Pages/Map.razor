@@ -109,12 +109,33 @@
             if (trackInfo != null && trackInfo.Coordinates.Count > 0)
             {
                 currentTrack = trackInfo.Coordinates;
-                Console.WriteLine($"Drawing track with {trackInfo.Coordinates.Count} points");
+                Console.WriteLine($"Drawing track with {trackInfo.Coordinates.Count} points and {trackInfo.Stations.Count} stations");
                 
-                // Draw track on map with station names
+                // Prepare station data for JavaScript
+                var stationsForJS = trackInfo.Stations.Select(s => new
+                {
+                    name = s.Name,
+                    latitude = s.Latitude,
+                    longitude = s.Longitude,
+                    platform = s.Platform,
+                    transportType = s.TransportType,
+                    scheduledArrival = s.ScheduledArrival,
+                    actualArrival = s.ActualArrival,
+                    arrivalDelay = s.ArrivalDelay,
+                    scheduledDeparture = s.ScheduledDeparture,
+                    actualDeparture = s.ActualDeparture,
+                    departureDelay = s.DepartureDelay,
+                    additionalInfo = s.AdditionalInfo,
+                    messages = s.Messages,
+                    notices = s.Notices,
+                    warnings = s.Warnings
+                }).ToArray();
+                
+                // Draw track on map with station names and stations
                 await JSRuntime.InvokeVoidAsync("leafletInterop.drawTrack", 
                     trackInfo.Coordinates.Select(c => new[] { c.lat, c.lng }).ToList(),
-                    new { start = trackInfo.StartStationName, end = trackInfo.EndStationName });
+                    new { start = trackInfo.StartStationName, end = trackInfo.EndStationName },
+                    stationsForJS);
             }
             else
             {

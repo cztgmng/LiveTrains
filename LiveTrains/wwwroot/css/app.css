@@ -45,3 +45,16 @@ html, body {
     border-radius: 4px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
+
+.map-loading-bg {
+    background: black !important;
+    transition: background 0.2s;
+    /* Optionally, you can add an overlay effect: */
+    /* position: relative; */
+}
+
+/* Optionally, fade the map tiles when loading */
+.map-loading-bg .leaflet-pane.leaflet-tile-pane {
+    opacity: 0.3;
+    transition: opacity 0.2s;
+}

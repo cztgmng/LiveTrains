@@ -18,6 +18,17 @@ window.leafletInterop = {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles &copy; Thunderforest',
             maxZoom: 19
         }).addTo(this.map);
+
+        // Add loading event listeners to set black background
+        var mapContainer = document.getElementById(elementId);
+        if (mapContainer && this.map) {
+            this.map.on('loading', function() {
+                mapContainer.classList.add('map-loading-bg');
+            });
+            this.map.on('load', function() {
+                mapContainer.classList.remove('map-loading-bg');
+            });
+        }
         
         return true;
     },
@@ -122,8 +133,8 @@ window.leafletInterop = {
         window._markers.push(marker);
     },
 
-    // Draw a track on the map
-    drawTrack: function(latlngs, stationNames) {
+    // Draw a track on the map with stations
+    drawTrack: function(latlngs, stationNames, stations) {
         if (!this.map) return;
         this.clearTrack();
         
@@ -144,8 +155,48 @@ window.leafletInterop = {
             opacity: 0.7
         }).addTo(this.map);
         
-        // Add markers for start and end of track
-        if (formattedPoints.length > 0) {
+        // Initialize stations marker array
+        window._stationMarkers = window._stationMarkers || [];
+        
+        // Add station markers if provided
+        if (stations && stations.length > 0) {
+            stations.forEach((station, index) => {
+                // Create station marker
+                var stationIcon = L.divIcon({
+                    className: 'station-marker',
+                    html: `<div class="station-dot" style="background-color: ${this.getStationColor(station, index, stations.length)}; width: 8px; height: 8px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`,
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
+                
+                var marker = L.marker([station.latitude, station.longitude], {
+                    icon: stationIcon,
+                    zIndexOffset: 100
+                }).addTo(this.map);
+                
+                // Create popup content with timing and delay information
+                var popupContent = this.createStationPopupContent(station);
+                marker.bindPopup(popupContent);
+                
+                // Add hover effects
+                marker.on('mouseover', function() {
+                    this.openPopup();
+                });
+                
+                marker.on('mouseout', function() {
+                    setTimeout(() => {
+                        if (!this.getPopup().isOpen() || !this.getPopup()._container.matches(':hover')) {
+                            this.closePopup();
+                        }
+                    }, 100);
+                });
+                
+                window._stationMarkers.push(marker);
+            });
+        }
+        
+        // Add markers for start and end of track (fallback if no station data)
+        if (formattedPoints.length > 0 && (!stations || stations.length === 0)) {
             var startPoint = formattedPoints[0];
             var endPoint = formattedPoints[formattedPoints.length - 1];
             
@@ -174,10 +225,90 @@ window.leafletInterop = {
                 })
             }).addTo(this.map)
               .bindPopup(endStationName);
-            
-            // Fit map to track bounds
+        }
+        
+        // Fit map to track bounds
+        if (window._trackPolyline) {
             this.map.fitBounds(window._trackPolyline.getBounds());
         }
+    },
+
+    // Helper function to get station color based on position and delays
+    getStationColor: function(station, index, totalStations) {
+        // Color based on delays
+        if (station.arrivalDelay > 0 || station.departureDelay > 0) {
+            return '#ff4444'; // Red for delays
+        }
+        
+        // Color based on position (start/end/middle)
+        if (index === 0) return '#22aa22'; // Green for start
+        if (index === totalStations - 1) return '#aa2222'; // Red for end
+        return '#4488ff'; // Blue for intermediate stations
+    },
+
+    // Helper function to create station popup content
+    createStationPopupContent: function(station) {
+        var content = `<div class="station-popup">
+            <h4 class="station-name">${station.name}</h4>`;
+        
+        if (station.platform) {
+            content += `<div class="station-platform">Platform: ${station.platform}</div>`;
+        }
+        
+        if (station.transportType && station.transportType !== 'TRAIN') {
+            content += `<div class="transport-type">${station.transportType}</div>`;
+        }
+        
+        // Arrival information
+        if (station.scheduledArrival) {
+            content += `<div class="timing-info">
+                <div class="arrival-info">
+                    <span class="timing-label">Arrival:</span>
+                    <span class="scheduled-time">${station.scheduledArrival}</span>`;
+            
+            if (station.arrivalDelay > 0) {
+                content += ` <span class="delay-info" style="color: white;">+${station.arrivalDelay}min</span>`;
+            }
+            
+            if (station.actualArrival && station.actualArrival !== station.scheduledArrival) {
+                content += ` <span class="actual-time">(${station.actualArrival})</span>`;
+            }
+            
+            content += `</div></div>`;
+        }
+        
+        // Departure information
+        if (station.scheduledDeparture) {
+            content += `<div class="timing-info">
+                <div class="departure-info">
+                    <span class="timing-label">Departure:</span>
+                    <span class="scheduled-time">${station.scheduledDeparture}</span>`;
+            
+            if (station.departureDelay > 0) {
+                content += ` <span class="delay-info" style="color: white;">+${station.departureDelay}min</span>`;
+            }
+            
+            if (station.actualDeparture && station.actualDeparture !== station.scheduledDeparture) {
+                content += ` <span class="actual-time">(${station.actualDeparture})</span>`;
+            }
+            
+            content += `</div></div>`;
+        }
+        
+        // Additional information
+        if (station.additionalInfo && station.additionalInfo.length > 0) {
+            content += `<div class="additional-info">`;
+            station.additionalInfo.forEach(info => {
+                if (info.trim()) {
+                    content += `<div class="info-message">${info}</div>`;
+                }
+            });
+            content += `</div>`;
+        }
+        
+        content += `</div>`;
+        
+        return content;
     },
 
     // Clear the track from the map
@@ -195,6 +326,14 @@ window.leafletInterop = {
         if (window._endMarker) {
             this.map.removeLayer(window._endMarker);
             window._endMarker = null;
+        }
+        
+        // Clear station markers
+        if (window._stationMarkers) {
+            window._stationMarkers.forEach(marker => {
+                this.map.removeLayer(marker);
+            });
+            window._stationMarkers = [];
         }
     },
 

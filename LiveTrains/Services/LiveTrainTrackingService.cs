@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace LiveTrains.Services
 {
@@ -41,12 +42,34 @@ namespace LiveTrains.Services
         public string ConnectionToken { get; set; } = string.Empty;
     }
 
+    // Add station information class
+    public class TrainStation
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Language { get; set; } = string.Empty;
+        public string ScheduledArrival { get; set; } = string.Empty;
+        public string ActualArrival { get; set; } = string.Empty;
+        public int ArrivalDelay { get; set; } = 0;
+        public string ScheduledDeparture { get; set; } = string.Empty;
+        public string ActualDeparture { get; set; } = string.Empty;
+        public int DepartureDelay { get; set; } = 0;
+        public string TransportType { get; set; } = string.Empty;
+        public string Platform { get; set; } = string.Empty;
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public List<string> Messages { get; set; } = new();
+        public List<string> Notices { get; set; } = new();
+        public List<string> Warnings { get; set; } = new();
+        public List<string> AdditionalInfo { get; set; } = new();
+    }
+
     // Add this class to return track info including station names
     public class TrainTrackInfo
     {
         public List<(double lat, double lng)> Coordinates { get; set; } = new();
         public string StartStationName { get; set; } = string.Empty;
         public string EndStationName { get; set; } = string.Empty;
+        public List<TrainStation> Stations { get; set; } = new();
     }
 
     // Add this class after the TrainTrackInfo class
@@ -61,6 +84,11 @@ namespace LiveTrains.Services
         public string RouteNumber { get; set; } = string.Empty; // b value
         public string TrackingUrl { get; set; } = string.Empty; // j value
         public long TrainId { get; set; }
+        public List<TrainStation> Stations { get; set; } = new();
+        public string StartTime { get; set; } = string.Empty;
+        public string EndTime { get; set; } = string.Empty;
+        public int StartDelay { get; set; } = 0;
+        public int EndDelay { get; set; } = 0;
     }
 
     public class LiveTrainTrackingService
@@ -521,6 +549,89 @@ namespace LiveTrains.Services
                             trackInfo.EndStationName = fElement.GetString() ?? "End Station";
                         }
                     }
+
+                    // Extract station information from a[0].s array
+                    if (doc.RootElement.TryGetProperty("a", out var aElement2) && 
+                        aElement2.GetArrayLength() > 0 &&
+                        aElement2[0].TryGetProperty("s", out var sElement))
+                    {
+                        foreach (var stationJson in sElement.EnumerateArray())
+                        {
+                            var station = new TrainStation();
+                            
+                            if (stationJson.TryGetProperty("a", out var nameElement))
+                                station.Name = nameElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("b", out var langElement))
+                                station.Language = langElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("c", out var schedArrElement))
+                                station.ScheduledArrival = schedArrElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("d", out var actualArrElement))
+                                station.ActualArrival = actualArrElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("e", out var arrDelayElement))
+                                station.ArrivalDelay = arrDelayElement.GetInt32();
+                            
+                            if (stationJson.TryGetProperty("f", out var schedDepElement))
+                                station.ScheduledDeparture = schedDepElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("g", out var actualDepElement))
+                                station.ActualDeparture = actualDepElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("h", out var depDelayElement))
+                                station.DepartureDelay = depDelayElement.GetInt32();
+                            
+                            if (stationJson.TryGetProperty("i", out var transportElement))
+                                station.TransportType = transportElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("j", out var platformElement))
+                                station.Platform = platformElement.GetString() ?? "";
+                            
+                            if (stationJson.TryGetProperty("k", out var latElement))
+                                station.Latitude = latElement.GetDouble();
+                            
+                            if (stationJson.TryGetProperty("l", out var lngElement))
+                                station.Longitude = lngElement.GetDouble();
+                            
+                            // Extract arrays of additional information
+                            if (stationJson.TryGetProperty("m", out var messagesElement))
+                            {
+                                foreach (var msg in messagesElement.EnumerateArray())
+                                {
+                                    station.Messages.Add(msg.GetString() ?? "");
+                                }
+                            }
+                            
+                            if (stationJson.TryGetProperty("n", out var noticesElement))
+                            {
+                                foreach (var notice in noticesElement.EnumerateArray())
+                                {
+                                    station.Notices.Add(notice.GetString() ?? "");
+                                }
+                            }
+                            
+                            if (stationJson.TryGetProperty("o", out var warningsElement))
+                            {
+                                foreach (var warning in warningsElement.EnumerateArray())
+                                {
+                                    station.Warnings.Add(warning.GetString() ?? "");
+                                }
+                            }
+                            
+                            if (stationJson.TryGetProperty("p", out var additionalElement))
+                            {
+                                foreach (var info in additionalElement.EnumerateArray())
+                                {
+                                    station.AdditionalInfo.Add(info.GetString() ?? "");
+                                }
+                            }
+                            
+                            trackInfo.Stations.Add(station);
+                        }
+                        Debug.WriteLine($"Extracted {trackInfo.Stations.Count} stations");
+                    }
                     
                     // Navigate through the JSON structure to find the track coordinates
                     // The track coordinates can be in root.a[0].r.s.rt, ct, rct, or dt (array of {s, d})
@@ -528,12 +639,12 @@ namespace LiveTrains.Services
                     if (doc.RootElement.TryGetProperty("a", out var a) && 
                         a.GetArrayLength() > 0 &&
                         a[0].TryGetProperty("r", out var r) &&
-                        r.TryGetProperty("s", out var sElement))
+                        r.TryGetProperty("s", out var sElementCoords))
                     {
                         string[] possibleKeys = { "rt", "ct", "rct", "dt" };
                         foreach (var key in possibleKeys)
                         {
-                            if (sElement.TryGetProperty(key, out var arr) && arr.ValueKind == JsonValueKind.Array && arr.GetArrayLength() > 0)
+                            if (sElementCoords.TryGetProperty(key, out var arr) && arr.ValueKind == JsonValueKind.Array && arr.GetArrayLength() > 0)
                             {
                                 pointsArray = arr;
                                 break;
@@ -598,8 +709,26 @@ namespace LiveTrains.Services
                 Number = trainNumber,
                 StartStationName = trackInfo.StartStationName,
                 EndStationName = trackInfo.EndStationName,
-                TrainId = trainId
+                TrainId = trainId,
+                Stations = trackInfo.Stations
             };
+
+            // Extract timing information from stations
+            if (trackInfo.Stations.Count > 0)
+            {
+                var firstStation = trackInfo.Stations.First();
+                var lastStation = trackInfo.Stations.Last();
+                
+                details.StartTime = !string.IsNullOrEmpty(firstStation.ScheduledDeparture) ? 
+                    firstStation.ScheduledDeparture : firstStation.ScheduledArrival;
+                details.StartDelay = firstStation.DepartureDelay != 0 ? 
+                    firstStation.DepartureDelay : firstStation.ArrivalDelay;
+                
+                details.EndTime = !string.IsNullOrEmpty(lastStation.ScheduledArrival) ? 
+                    lastStation.ScheduledArrival : lastStation.ScheduledDeparture;
+                details.EndDelay = lastStation.ArrivalDelay != 0 ? 
+                    lastStation.ArrivalDelay : lastStation.DepartureDelay;
+            }
             
             try
             {
