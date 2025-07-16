@@ -131,9 +131,9 @@
 .route-line {
     width: 2px;
     background-color: #004494;
-    height: 30px;
+    height: 40px;
     margin-left: 5px;
-    margin-top: 5px;
+    margin-top: -20px;
     margin-bottom: 5px;
 }
 

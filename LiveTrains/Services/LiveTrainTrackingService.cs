@@ -366,29 +366,38 @@ namespace LiveTrains.Services
                 // Convert to string for JSON detection
                 string jsonString = Encoding.UTF8.GetString(messageData);
 
-                if (string.IsNullOrEmpty(jsonString))
+                if (string.IsNullOrEmpty(jsonString.Replace("{", "").Replace("}","")) || jsonString.Contains("\"invocationId\":\"0\",\"result\":null"))
                 {
                     return;
                 }
                 
-                if (jsonString.Contains("\"target\":\"TrainStatus\""))
+                // Check if this message contains concatenated JSON objects
+                // This happens when the buffer splits at boundaries like 4096 bytes
+                var jsonMessages = SplitConcatenatedJson(jsonString);
+                
+                foreach (var json in jsonMessages)
                 {
-                    try
+                    if (json.Contains("\"target\":\"TrainStatus\""))
                     {
-                        // Process directly from bytes to avoid string encoding/decoding issues
-                        var trainPositions = ParseTrainPositionsFromBytes(messageData);
-                        if (trainPositions != null && trainPositions.Count > 0)
+                        try
                         {
-                            OnTrainPositionsUpdated?.Invoke(trainPositions);
+                            // Process directly from bytes to avoid string encoding/decoding issues
+                            var jsonBytes = Encoding.UTF8.GetBytes(json);
+                            var trainPositions = ParseTrainPositionsFromBytes(jsonBytes);
+                            if (trainPositions != null && trainPositions.Count > 0)
+                            {
+                                OnTrainPositionsUpdated?.Invoke(trainPositions);
+                            }
                         }
-                    }
-                    catch (JsonException ex)
-                    {
-                        Trace.WriteLine($"JSON parsing error: {ex.Message}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"Error processing train positions: {ex.Message}");
+                        catch (JsonException ex)
+                        {
+                            Trace.WriteLine($"JSON parsing error: {ex.Message}");
+                            Trace.WriteLine($"Problematic JSON: {json.Substring(0, Math.Min(500, json.Length))}...");
+                        }
+                        catch (Exception ex)
+                        {
+                            Trace.WriteLine($"Error processing train positions: {ex.Message}");
+                        }
                     }
                 }
             }
@@ -396,6 +405,97 @@ namespace LiveTrains.Services
             {
                 Trace.WriteLine($"Error processing message bytes: {ex.Message}");
             }
+        }
+
+        private List<string> SplitConcatenatedJson(string jsonString)
+        {
+            var result = new List<string>();
+            
+            if (string.IsNullOrEmpty(jsonString))
+            {
+                return result;
+            }
+            
+            try
+            {
+                int currentPos = 0;
+                int braceCount = 0;
+                int startPos = 0;
+                bool inString = false;
+                bool escaped = false;
+                
+                for (int i = 0; i < jsonString.Length; i++)
+                {
+                    char c = jsonString[i];
+                    
+                    if (escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+                    
+                    if (c == '\\' && inString)
+                    {
+                        escaped = true;
+                        continue;
+                    }
+                    
+                    if (c == '"')
+                    {
+                        inString = !inString;
+                        continue;
+                    }
+                    
+                    if (inString)
+                    {
+                        continue;
+                    }
+                    
+                    if (c == '{')
+                    {
+                        if (braceCount == 0)
+                        {
+                            startPos = i;
+                        }
+                        braceCount++;
+                    }
+                    else if (c == '}')
+                    {
+                        braceCount--;
+                        if (braceCount == 0)
+                        {
+                            // Found a complete JSON object
+                            string jsonObject = jsonString.Substring(startPos, i - startPos + 1);
+                            if (!string.IsNullOrWhiteSpace(jsonObject))
+                            {
+                                result.Add(jsonObject);
+                            }
+                            currentPos = i + 1;
+                        }
+                        else if (braceCount < 0)
+                        {
+                            // Error in JSON structure, reset
+                            braceCount = 0;
+                        }
+                    }
+                }
+                
+                // If we couldn't parse any complete JSON objects, return the original string
+                // This handles cases where there's only one valid JSON object
+                if (result.Count == 0 && jsonString.Trim().StartsWith("{"))
+                {
+                    result.Add(jsonString);
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Error splitting concatenated JSON: {ex.Message}");
+                // Fallback: return the original string
+                result.Clear();
+                result.Add(jsonString);
+            }
+            
+            return result;
         }
 
         private List<TrainPosition> ParseTrainPositionsFromBytes(byte[] messageBytes)
@@ -542,11 +642,19 @@ namespace LiveTrains.Services
                     {
                         if (tElement.TryGetProperty("d", out var dElement))
                         {
-                            trackInfo.StartStationName = dElement.GetString() ?? "Start Station";
+                            var startStationFromT = dElement.GetString();
+                            if (!string.IsNullOrEmpty(startStationFromT))
+                            {
+                                trackInfo.StartStationName = startStationFromT;
+                            }
                         }
                         if (tElement.TryGetProperty("f", out var fElement))
                         {
-                            trackInfo.EndStationName = fElement.GetString() ?? "End Station";
+                            var endStationFromT = fElement.GetString();
+                            if (!string.IsNullOrEmpty(endStationFromT))
+                            {
+                                trackInfo.EndStationName = endStationFromT;
+                            }
                         }
                     }
 
@@ -632,6 +740,20 @@ namespace LiveTrains.Services
                             trackInfo.Stations.Add(station);
                         }
                         Debug.WriteLine($"Extracted {trackInfo.Stations.Count} stations");
+                        
+                        // Fallback: If start station name is empty, use first station from stations list
+                        if (string.IsNullOrEmpty(trackInfo.StartStationName) && trackInfo.Stations.Count > 0)
+                        {
+                            trackInfo.StartStationName = trackInfo.Stations.First().Name;
+                            Debug.WriteLine($"Using first station as start station: {trackInfo.StartStationName}");
+                        }
+                        
+                        // Fallback: If end station name is empty, use last station from stations list
+                        if (string.IsNullOrEmpty(trackInfo.EndStationName) && trackInfo.Stations.Count > 0)
+                        {
+                            trackInfo.EndStationName = trackInfo.Stations.Last().Name;
+                            Debug.WriteLine($"Using last station as end station: {trackInfo.EndStationName}");
+                        }
                     }
                     
                     // Navigate through the JSON structure to find the track coordinates
@@ -779,13 +901,27 @@ namespace LiveTrains.Services
                     if (tElement.TryGetProperty("c", out var cValue))
                         details.Carrier = cValue.GetString() ?? string.Empty;
                         
-                    // Start station (d) - already got from trackInfo but could override if needed
+                    // Start station (d) - check if not empty, otherwise keep the one from trackInfo (which has fallback logic)
                     if (tElement.TryGetProperty("d", out var dValue))
-                        details.StartStationName = dValue.GetString() ?? details.StartStationName;
+                    {
+                        var startStationFromT = dValue.GetString();
+                        if (!string.IsNullOrEmpty(startStationFromT))
+                        {
+                            details.StartStationName = startStationFromT;
+                        }
+                        // If empty, keep the value from trackInfo which already has fallback logic
+                    }
                         
-                    // End station (f) - already got from trackInfo but could override if needed
+                    // End station (f) - check if not empty, otherwise keep the one from trackInfo (which has fallback logic)
                     if (tElement.TryGetProperty("f", out var fValue))
-                        details.EndStationName = fValue.GetString() ?? details.EndStationName;
+                    {
+                        var endStationFromT = fValue.GetString();
+                        if (!string.IsNullOrEmpty(endStationFromT))
+                        {
+                            details.EndStationName = endStationFromT;
+                        }
+                        // If empty, keep the value from trackInfo which already has fallback logic
+                    }
                         
                     // URL to tracking website (j)
                     if (tElement.TryGetProperty("j", out var jValue))
