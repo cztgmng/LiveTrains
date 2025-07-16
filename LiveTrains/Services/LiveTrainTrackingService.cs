@@ -22,6 +22,8 @@ namespace LiveTrains.Services
         public string Type { get; set; }
         public string Carrier { get; set; }
         public long TrainId { get; set; } // Added to store the train ID (IS value)
+        public bool HasGps { get; set; } // Added to indicate if train has GPS tracking
+        public string? GpsTimestamp { get; set; } // Added to store GPS timestamp from 'c' property
     }
 
     public class FirstNegotiateResponse
@@ -101,8 +103,105 @@ namespace LiveTrains.Services
         private Dictionary<string, long> _trainIdMapping = new Dictionary<string, long>(); // Map train numbers to IDs
         private DateTime _lastPidFetchTime = DateTime.MinValue;
         private readonly TimeSpan _pidCacheDuration = TimeSpan.FromHours(1); // Cache PID for 1 hour
+        
+        // GPS filtering properties
+        private bool _gpsFilterEnabled = false;
+        private List<TrainPosition> _allTrainPositions = new(); // Store all trains
+        private List<TrainPosition> _lastFilteredPositions = new(); // Store last filtered result
 
         public event Action<List<TrainPosition>>? OnTrainPositionsUpdated;
+        
+        // Property to get/set GPS filter state
+        public bool GpsFilterEnabled 
+        { 
+            get => _gpsFilterEnabled;
+            set 
+            {
+                if (_gpsFilterEnabled != value)
+                {
+                    _gpsFilterEnabled = value;
+                    // Re-filter and notify with current trains
+                    var filteredTrains = FilterTrainsByGps(_allTrainPositions);
+                    _lastFilteredPositions = filteredTrains;
+                    OnTrainPositionsUpdated?.Invoke(filteredTrains);
+                }
+            }
+        }
+        
+        // Method to filter trains based on GPS availability
+        private List<TrainPosition> FilterTrainsByGps(List<TrainPosition> allTrains)
+        {
+            if (!_gpsFilterEnabled)
+            {
+                // When GPS filter is disabled, show all trains except GPS-enabled duplicates
+                // Group by train number and prefer non-GPS version if both exist
+                var trainGroups = allTrains.GroupBy(t => t.Number);
+                var result = new List<TrainPosition>();
+                
+                foreach (var group in trainGroups)
+                {
+                    var trains = group.ToList();
+                    if (trains.Count == 1)
+                    {
+                        result.Add(trains[0]);
+                    }
+                    else
+                    {
+                        // If there are duplicates, prefer the non-GPS version
+                        var nonGpsTrain = trains.FirstOrDefault(t => !t.HasGps);
+                        if (nonGpsTrain != null)
+                        {
+                            result.Add(nonGpsTrain);
+                            //Debug.WriteLine($"Filtered duplicate train {nonGpsTrain.Number}: chose non-GPS version");
+                        }
+                        else
+                        {
+                            // If all have GPS, take the first one
+                            result.Add(trains[0]);
+                            //Debug.WriteLine($"Filtered duplicate train {trains[0].Number}: all have GPS, chose first");
+                        }
+                    }
+                }
+                
+                Debug.WriteLine($"GPS filter OFF: {allTrains.Count} total -> {result.Count} filtered (GPS: {result.Count(t => t.HasGps)})");
+                return result;
+            }
+            else
+            {
+                // When GPS filter is enabled, show GPS-enabled trains + non-GPS trains (no duplicates)
+                // Group by train number and prefer GPS version if both exist
+                var trainGroups = allTrains.GroupBy(t => t.Number);
+                var result = new List<TrainPosition>();
+                
+                foreach (var group in trainGroups)
+                {
+                    var trains = group.ToList();
+                    if (trains.Count == 1)
+                    {
+                        result.Add(trains[0]);
+                    }
+                    else
+                    {
+                        // If there are duplicates, prefer the GPS version
+                        var gpsTrain = trains.FirstOrDefault(t => t.HasGps);
+                        if (gpsTrain != null)
+                        {
+                            result.Add(gpsTrain);
+                            //Debug.WriteLine($"Filtered duplicate train {gpsTrain.Number}: chose GPS version");
+                        }
+                        else
+                        {
+                            // If none have GPS, take the first one
+                            result.Add(trains[0]);
+                            //Debug.WriteLine($"Filtered duplicate train {trains[0].Number}: none have GPS, chose first");
+                        }
+                    }
+                }
+                
+                Debug.WriteLine($"GPS filter ON: {allTrains.Count} total -> {result.Count} filtered (GPS: {result.Count(t => t.HasGps)})");
+                return result;
+            }
+        }
 
         public async Task StartAsync()
         {
@@ -386,7 +485,11 @@ namespace LiveTrains.Services
                             var trainPositions = ParseTrainPositionsFromBytes(jsonBytes);
                             if (trainPositions != null && trainPositions.Count > 0)
                             {
-                                OnTrainPositionsUpdated?.Invoke(trainPositions);
+                                // Store all trains and apply filtering
+                                _allTrainPositions = trainPositions;
+                                var filteredTrains = FilterTrainsByGps(trainPositions);
+                                _lastFilteredPositions = filteredTrains;
+                                OnTrainPositionsUpdated?.Invoke(filteredTrains);
                             }
                         }
                         catch (JsonException ex)
@@ -549,6 +652,16 @@ namespace LiveTrains.Services
                             trainId = trainIdProp.GetInt64();
                         }
                         
+                        // Extract GPS information from 'c' property
+                        bool hasGps = false;
+                        string? gpsTimestamp = null;
+                        if (train.TryGetProperty("c", out var gpsTimestampProp) && 
+                            gpsTimestampProp.ValueKind == JsonValueKind.String)
+                        {
+                            gpsTimestamp = gpsTimestampProp.GetString();
+                            hasGps = !string.IsNullOrEmpty(gpsTimestamp);
+                        }
+                        
                         var trainNumberStr = number.GetString() ?? "";
                         
                         // Store train ID for later use with the ShowTrack API
@@ -564,7 +677,9 @@ namespace LiveTrains.Services
                             Number = trainNumberStr,
                             Type = type.GetString() ?? "",
                             Carrier = carrier,
-                            TrainId = trainId
+                            TrainId = trainId,
+                            HasGps = hasGps,
+                            GpsTimestamp = gpsTimestamp
                         });
                     }
                     catch (Exception ex)

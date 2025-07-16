@@ -7,6 +7,28 @@
 @using System.Collections.Generic
 
 <div class="map-container" id="mapId">
+    <!-- GPS Filter Toggle Button -->
+    <div class="map-controls">
+        <button class="btn btn-toggle @(gpsFilterEnabled ? "btn-toggle-on" : "btn-toggle-off")" 
+                @onclick="ToggleGpsFilter"
+                title="@(gpsFilterEnabled ? "Showing GPS-enabled trains and non-GPS trains" : "Showing all trains (non-GPS preferred when duplicates exist)")">
+            <i class="@(gpsFilterEnabled ? "fas fa-satellite-dish" : "fas fa-train")"></i>
+            @(gpsFilterEnabled ? "GPS Mode" : "All Trains")
+        </button>
+    </div>
+    
+    <!-- GPS Status Indicator -->
+    @if (trainPositions.Any())
+    {
+        <div class="gps-status">
+            @{
+                var gpsTrains = trainPositions.Count(t => t.HasGps);
+                var totalTrains = trainPositions.Count;
+            }
+            Trains: @totalTrains | GPS: @gpsTrains (@((gpsTrains * 100.0 / totalTrains).ToString("F0"))%)
+        </div>
+    }
+    
     @if (currentTrainDetails != null)
     {
         <div class="train-details-container">
@@ -19,6 +41,7 @@
     private IJSObjectReference? _module;
     private DotNetObjectReference<Map>? _objectReference;
     private List<TrainPosition> trainPositions = new();
+    private bool gpsFilterEnabled = false; // GPS filter state
 
     [Parameter]
     public double Latitude { get; set; } = 51.505;
@@ -164,18 +187,32 @@
     // Update train markers to be clickable
     private void UpdateTrainMarkersOnMap()
     {
-        JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
-        foreach (var train in trainPositions)
+        try
         {
-            var iconUrl = GetCarrierIconUrl(train.Type);
-            var isSelected = train.Number == selectedTrainNumber;
-            var hideOthers = !string.IsNullOrEmpty(selectedTrainNumber); // Hide others if a train is selected
-            
-            // Pass train number as identifier and the selected state
-            JSRuntime.InvokeVoidAsync("leafletInterop.addTrainMarkerWithClick", 
-                train.Latitude, train.Longitude, 
-                $"{train.Number} ({train.Type})", iconUrl, 
-                DotNetObjectReference.Create(this), train.Number, isSelected, hideOthers);
+            JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
+            foreach (var train in trainPositions)
+            {
+                var iconUrl = GetCarrierIconUrl(train.Type);
+                var isSelected = train.Number == selectedTrainNumber;
+                var hideOthers = !string.IsNullOrEmpty(selectedTrainNumber); // Hide others if a train is selected
+                
+                // Create train title with GPS indicator
+                var trainTitle = $"{train.Number} ({train.Type})";
+                if (train.HasGps)
+                {
+                    trainTitle += " ??"; // Add satellite emoji for GPS trains
+                }
+                
+                // Pass train number as identifier and the selected state
+                JSRuntime.InvokeVoidAsync("leafletInterop.addTrainMarkerWithClick", 
+                    train.Latitude, train.Longitude, 
+                    trainTitle, iconUrl, 
+                    DotNetObjectReference.Create(this), train.Number, isSelected, hideOthers);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating train markers: {ex.Message}");
         }
     }
 
@@ -262,6 +299,21 @@
             "KM£" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw",
             _ => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX16d"
         };
+    }
+
+    // Toggle GPS filter
+    private void ToggleGpsFilter()
+    {
+        try
+        {
+            gpsFilterEnabled = !gpsFilterEnabled;
+            TrainTrackingService.GpsFilterEnabled = gpsFilterEnabled;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling GPS filter: {ex.Message}");
+        }
     }
 
     async ValueTask IAsyncDisposable.DisposeAsync()
