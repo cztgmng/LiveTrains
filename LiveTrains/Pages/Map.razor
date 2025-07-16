@@ -100,6 +100,9 @@
             // Show loading state
             await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", true);
             
+            // Hide other trains when one is selected
+            await JSRuntime.InvokeVoidAsync("leafletInterop.hideOtherTrains", trainNumber);
+            
             // Get detailed train information
             currentTrainDetails = await TrainTrackingService.GetTrainDetailsAsync(trainNumber);
             
@@ -166,12 +169,13 @@
         {
             var iconUrl = GetCarrierIconUrl(train.Type);
             var isSelected = train.Number == selectedTrainNumber;
+            var hideOthers = !string.IsNullOrEmpty(selectedTrainNumber); // Hide others if a train is selected
             
             // Pass train number as identifier and the selected state
             JSRuntime.InvokeVoidAsync("leafletInterop.addTrainMarkerWithClick", 
                 train.Latitude, train.Longitude, 
                 $"{train.Number} ({train.Type})", iconUrl, 
-                DotNetObjectReference.Create(this), train.Number, isSelected);
+                DotNetObjectReference.Create(this), train.Number, isSelected, hideOthers);
         }
     }
 
@@ -226,6 +230,9 @@
     {
         currentTrainDetails = null;
         await ClearTrackAsync();
+        
+        // Show all trains again when details are closed
+        await JSRuntime.InvokeVoidAsync("leafletInterop.showAllTrains");
     }
 
     // Clear the track when no longer needed

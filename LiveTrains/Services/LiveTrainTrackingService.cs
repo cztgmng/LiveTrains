@@ -555,6 +555,7 @@ namespace LiveTrains.Services
                         aElement2.GetArrayLength() > 0 &&
                         aElement2[0].TryGetProperty("s", out var sElement))
                     {
+
                         foreach (var stationJson in sElement.EnumerateArray())
                         {
                             var station = new TrainStation();

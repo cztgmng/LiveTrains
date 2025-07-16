@@ -100,8 +100,13 @@ window.leafletInterop = {
 
     // Add a train marker with a custom icon and click event
     // Added isSelected parameter for highlighting selected train
-    addTrainMarkerWithClick: function(lat, lng, label, iconUrl, dotNetRef, trainNumber, isSelected) {
+    addTrainMarkerWithClick: function(lat, lng, label, iconUrl, dotNetRef, trainNumber, isSelected, hideOthers) {
         if (!this.map) return false;
+        
+        // If hideOthers is true and this train is not selected, don't add the marker
+        if (hideOthers && !isSelected) {
+            return false;
+        }
         
         var iconOptions = {
             iconUrl: iconUrl,
@@ -129,8 +134,31 @@ window.leafletInterop = {
             dotNetRef.invokeMethodAsync('OnTrainMarkerClicked', trainNumber);
         });
         
+        // Store train number with marker for easy identification
+        marker.trainNumber = trainNumber;
+        
         window._markers = window._markers || [];
         window._markers.push(marker);
+    },
+
+    // Hide all train markers except the selected one
+    hideOtherTrains: function(selectedTrainNumber) {
+        if (!window._markers) return;
+        
+        window._markers.forEach(marker => {
+            if (marker.trainNumber !== selectedTrainNumber) {
+                marker.setOpacity(0);
+            }
+        });
+    },
+
+    // Show all train markers
+    showAllTrains: function() {
+        if (!window._markers) return;
+        
+        window._markers.forEach(marker => {
+            marker.setOpacity(1);
+        });
     },
 
     // Draw a track on the map with stations
