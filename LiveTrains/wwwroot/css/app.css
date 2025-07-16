@@ -34,18 +34,38 @@ html, body {
     height: 100%;
     min-height: 400px;
     position: relative;
+    /* Ensure map doesn't interfere with overlays */
+    pointer-events: auto;
+}
+
+/* Prevent map from capturing events when train details is open */
+.map-container:has(.train-details-container) .leaflet-container {
+    pointer-events: auto;
 }
 
 .leaflet-container {
     height: 100%;
     width: 100%;
     background: #463144 !important;
+    /* Allow map interaction by default */
+    pointer-events: auto;
+}
+
+/* Ensure the map control zoom buttons work */
+.leaflet-control-zoom {
+    pointer-events: auto !important;
+}
+
+.leaflet-control-zoom a {
+    pointer-events: auto !important;
 }
 
 /* Optional: style for train icons if needed */
 .leaflet-marker-icon {
     border-radius: 4px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    /* Ensure markers are clickable */
+    pointer-events: auto !important;
 }
 
 .map-loading-bg {
@@ -69,6 +89,8 @@ html, body {
     z-index: 1000;
     display: flex;
     gap: 10px;
+    /* Ensure controls work */
+    pointer-events: auto;
 }
 
 .btn-toggle {
@@ -85,6 +107,11 @@ html, body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     min-width: 120px;
     justify-content: center;
+    /* Ensure button is clickable */
+    pointer-events: auto;
+    /* Make text not selectable */
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .btn-toggle:hover {
@@ -112,6 +139,9 @@ html, body {
 
 .btn-toggle i {
     font-size: 16px;
+    /* Icons should not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* GPS Status Indicator */
@@ -126,25 +156,37 @@ html, body {
     border-radius: 4px;
     font-size: 12px;
     max-width: 200px;
+    /* Allow text selection in status */
+    user-select: text;
+    -webkit-user-select: text;
+    pointer-events: auto;
 }
 
 /* Delay Legend Styling */
 .delay-legend {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    /* Ensure legend is interactive */
+    pointer-events: auto;
 }
 
 .delay-legend .leaflet-control {
     margin-bottom: 10px;
+    pointer-events: auto;
 }
 
 /* Station marker styling */
 .station-marker {
     background: transparent !important;
     border: none !important;
+    /* Ensure station markers are clickable */
+    pointer-events: auto !important;
 }
 
 .station-dot {
     transition: transform 0.2s ease;
+    /* Dots should not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .station-marker:hover .station-dot {
@@ -154,6 +196,10 @@ html, body {
 /* Station popup styling */
 .station-popup {
     min-width: 200px;
+    /* Allow text selection in popups */
+    user-select: text;
+    -webkit-user-select: text;
+    pointer-events: auto;
 }
 
 .station-popup .station-name {
@@ -161,27 +207,37 @@ html, body {
     margin: 0 0 8px 0;
     font-size: 14px;
     font-weight: bold;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .station-platform {
     color: #666;
     font-size: 12px;
     margin-bottom: 5px;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .timing-info {
     margin: 5px 0;
     font-size: 12px;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .timing-label {
     font-weight: bold;
     color: #555;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .scheduled-time {
     color: #333;
     margin-left: 5px;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .delay-info {
@@ -191,22 +247,50 @@ html, body {
     border-radius: 3px;
     font-size: 11px;
     margin-left: 5px;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .actual-time {
     color: #666;
     font-style: italic;
     margin-left: 5px;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .additional-info {
     margin-top: 8px;
     padding-top: 5px;
     border-top: 1px solid #eee;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .station-popup .info-message {
     color: #666;
     font-size: 11px;
     margin: 2px 0;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Ensure all leaflet popups allow text selection */
+.leaflet-popup-content {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    pointer-events: auto !important;
+}
+
+.leaflet-popup-content-wrapper {
+    pointer-events: auto !important;
+}
+
+/* Ensure all controls remain interactive */
+.leaflet-control {
+    pointer-events: auto !important;
+}
+
+.leaflet-control a {
+    pointer-events: auto !important;
 }

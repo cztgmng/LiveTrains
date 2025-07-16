@@ -32,7 +32,107 @@
                         }
                     </div>
                 </div>
-                <div class="route-line"></div>
+                
+                @* Route middle section with smooth expansion *@
+                <div class="route-middle">
+                    <div class="route-line-top"></div>
+                    
+                    @* Show expand button only if there are intermediate stations *@
+                    @if (TrainDetails.Stations.Count > 2)
+                    {
+                        <button class="route-expand-button" @onclick="ToggleRouteExpanded">
+                            <span class="route-expand-text">
+                                @if (routeExpanded)
+                                {
+                                    <span>Hide Route</span>
+                                }
+                                else
+                                {
+                                    <span>@(TrainDetails.Stations.Count - 2) stops</span>
+                                }
+                            </span>
+                            <span class="route-expand-icon @(routeExpanded ? "expanded" : "collapsed")">▼</span>
+                        </button>
+                    }
+                    
+                    @* Smooth expansion container for route stations *@
+                    <div class="route-expansion-container @(routeExpanded ? "" : "collapsed")">
+                        @if (TrainDetails.Stations.Count > 2)
+                        {
+                            @for (int i = 1; i < TrainDetails.Stations.Count - 1; i++)
+                            {
+                                var station = TrainDetails.Stations[i];
+                                
+                                <div class="inline-route-station">
+                                    <div class="inline-station-line">
+                                        <div class="inline-station-dot"></div>
+                                        <div class="inline-connection-line"></div>
+                                    </div>
+                                    <div class="inline-station-info">
+                                        <div class="inline-station-name">@station.Name</div>
+                                        
+                                        @if (!string.IsNullOrEmpty(station.Platform))
+                                        {
+                                            <div class="inline-station-platform">Platform @station.Platform</div>
+                                        }
+                                        
+                                        <div class="inline-station-times">
+                                            @if (!string.IsNullOrEmpty(station.ScheduledArrival))
+                                            {
+                                                <div class="inline-time-row">
+                                                    <span class="inline-time-label">Arr:</span>
+                                                    <span class="inline-time-value">
+                                                        @station.ScheduledArrival
+                                                        @if (station.ArrivalDelay > 0)
+                                                        {
+                                                            <span class="inline-delay">+@station.ArrivalDelay.ToString("F1")min</span>
+                                                        }
+                                                    </span>
+                                                </div>
+                                            }
+                                            
+                                            @if (!string.IsNullOrEmpty(station.ScheduledDeparture))
+                                            {
+                                                <div class="inline-time-row">
+                                                    <span class="inline-time-label">Dep:</span>
+                                                    <span class="inline-time-value">
+                                                        @station.ScheduledDeparture
+                                                        @if (station.DepartureDelay > 0)
+                                                        {
+                                                            <span class="inline-delay">+@station.DepartureDelay.ToString("F1")min</span>
+                                                        }
+                                                    </span>
+                                                </div>
+                                            }
+                                        </div>
+
+                                        @* Show additional information if available *@
+                                        @if (station.Messages.Any() || station.Notices.Any() || station.Warnings.Any())
+                                        {
+                                            <div class="inline-station-alerts">
+                                                @foreach (var message in station.Messages)
+                                                {
+                                                    <div class="inline-alert inline-message">ℹ️ @message</div>
+                                                }
+                                                @foreach (var notice in station.Notices)
+                                                {
+                                                    <div class="inline-alert inline-notice">📋 @notice</div>
+                                                }
+                                                @foreach (var warning in station.Warnings)
+                                                {
+                                                    <div class="inline-alert inline-warning">⚠️ @warning</div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                    
+                    <div class="route-line-bottom"></div>
+                </div>
+                
                 <div class="station end-station">
                     <div class="station-dot end-dot"></div>
                     <div class="station-details">
@@ -50,6 +150,7 @@
                     </div>
                 </div>
             </div>
+
             <div class="train-details-info">
                 <div class="info-row">
                     <span class="info-label">Carrier:</span>
@@ -67,6 +168,14 @@
                     <div class="info-row">
                         <span class="info-label">Stations:</span>
                         <span class="info-value">@TrainDetails.Stations.Count stops</span>
+                    </div>
+                }
+                @* Add total journey time *@
+                @if (GetTotalJourneyTime() != null)
+                {
+                    <div class="info-row">
+                        <span class="info-label">Journey time:</span>
+                        <span class="info-value">@GetTotalJourneyTime()</span>
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(TrainDetails.TrackingUrl))
@@ -110,6 +219,53 @@
 
     [Parameter]
     public EventCallback OnClose { get; set; }
+
+    private bool routeExpanded = false;
+
+    private void ToggleRouteExpanded()
+    {
+        routeExpanded = !routeExpanded;
+    }
+
+    private string? GetTotalJourneyTime()
+    {
+        if (TrainDetails == null || string.IsNullOrEmpty(TrainDetails.StartTime) || string.IsNullOrEmpty(TrainDetails.EndTime))
+            return null;
+
+        try
+        {
+            // Parse time strings (format: HH:mm)
+            if (TimeSpan.TryParse(TrainDetails.StartTime, out var startTime) && 
+                TimeSpan.TryParse(TrainDetails.EndTime, out var endTime))
+            {
+                var duration = endTime - startTime;
+                
+                // Handle overnight journeys
+                if (duration.TotalMinutes < 0)
+                {
+                    duration = duration.Add(TimeSpan.FromDays(1));
+                }
+                
+                var hours = (int)duration.TotalHours;
+                var minutes = duration.Minutes;
+                
+                if (hours > 0)
+                {
+                    return $"{hours}h {minutes}m";
+                }
+                else
+                {
+                    return $"{minutes}m";
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // If parsing fails, return null
+        }
+        
+        return null;
+    }
 
     private string GetCarrierIconUrl(string carrier)
     {

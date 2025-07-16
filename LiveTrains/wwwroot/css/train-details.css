@@ -1,19 +1,38 @@
-/* Train Details Box Styles */
+/* Train Details Box Styles - MAUI WebView Compatible with Higher Z-Index */
 .train-details-container {
-    position: absolute;
+    position: fixed;
     top: 20px;
     right: 20px;
-    z-index: 1000;
-    max-width: 350px;
+    z-index: 1100; /* Higher than map controls (1000) to ensure it appears above everything */
+    max-width: 400px;
     width: 100%;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     pointer-events: auto;
+    /* MAUI WebView: Ensure proper isolation */
+    isolation: isolate;
+    /* MAUI WebView: Force stacking context */
+    transform: translateZ(0);
 }
 
 .train-details-box {
     background-color: #fff;
     border-radius: 8px;
     overflow: hidden;
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    /* MAUI WebView: Enable text selection with all vendor prefixes */
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    /* MAUI WebView: Ensure events are captured */
+    pointer-events: auto;
+    /* MAUI WebView: Allow all touch interactions within the box */
+    touch-action: manipulation;
+    /* MAUI WebView: Force hardware acceleration */
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 .train-details-header {
@@ -23,6 +42,15 @@
     background-color: #004494;
     color: white;
     position: relative;
+    flex-shrink: 0;
+    /* MAUI WebView: Enable text selection in header */
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    pointer-events: auto;
+    /* MAUI WebView: Prevent zoom on double tap */
+    touch-action: manipulation;
 }
 
 .carrier-logo {
@@ -33,16 +61,30 @@
     padding: 3px;
     margin-right: 10px;
     object-fit: contain;
+    /* Logo should not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .train-title {
     flex: 1;
+    /* Enable text selection for titles */
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .train-title h3 {
     margin: 0;
     font-size: 18px;
     font-weight: 600;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .train-title h4 {
@@ -50,6 +92,10 @@
     font-size: 14px;
     font-weight: 400;
     opacity: 0.9;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .close-button {
@@ -62,10 +108,41 @@
     position: absolute;
     top: 10px;
     right: 15px;
+    /* Button should capture events but not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    pointer-events: auto;
+    /* MAUI WebView: Ensure button works */
+    touch-action: manipulation;
 }
 
 .train-details-content {
     padding: 15px;
+    overflow-y: auto;
+    flex: 1;
+    /* MAUI WebView: Ensure scrolling works and text is selectable */
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    pointer-events: auto;
+    /* MAUI WebView: Enable focus for scrolling */
+    outline: none;
+    /* MAUI WebView: Prevent parent scrolling */
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    /* MAUI WebView: Allow vertical scrolling only */
+    touch-action: pan-y;
+    /* MAUI WebView: Force compositing layer */
+    transform: translateZ(0);
+}
+
+/* MAUI WebView: Force focus capture on interaction */
+.train-details-content:active,
+.train-details-content:focus {
+    pointer-events: auto !important;
 }
 
 .route-info {
@@ -73,12 +150,20 @@
     flex-direction: column;
     margin-bottom: 20px;
     position: relative;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .station {
     display: flex;
     align-items: flex-start;
     padding: 5px 0;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .station-dot {
@@ -88,6 +173,11 @@
     margin-right: 12px;
     margin-top: 2px;
     flex-shrink: 0;
+    /* Dots should not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .start-dot {
@@ -100,11 +190,19 @@
 
 .station-details {
     flex: 1;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .station-name {
     font-weight: 500;
     margin-bottom: 2px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .station-time {
@@ -112,11 +210,19 @@
     align-items: center;
     gap: 8px;
     font-size: 13px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .station-time .time {
     color: #333;
     font-weight: 500;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .station-time .delay {
@@ -126,37 +232,403 @@
     border-radius: 12px;
     font-size: 11px;
     font-weight: 600;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
-.route-line {
+/* Enhanced route middle section for seamless expansion */
+.route-middle {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    position: relative;
+    margin: 8px 0;
+    pointer-events: auto;
+}
+
+.route-line-top,
+.route-line-bottom {
     width: 2px;
     background-color: #004494;
-    height: 40px;
-    margin-left: 5px;
-    margin-top: -20px;
-    margin-bottom: 5px;
+    height: 15px;
+    margin-left: 38px;
+    /* Lines should not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Smooth transition for line length changes */
+    transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth button animations */
+.route-expand-button {
+    background: #004494;
+    border: none;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    margin: 4px 0;
+    /* Enhanced smooth transitions */
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0, 68, 148, 0.2);
+    min-width: 80px;
+    justify-content: center;
+    /* Button should capture events but not be selectable */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    pointer-events: auto;
+    /* MAUI WebView: Ensure button interaction works */
+    touch-action: manipulation;
+    /* Hardware acceleration for smooth animations */
+    will-change: transform, box-shadow, background-color;
+    transform: translateZ(0);
+}
+
+.route-expand-button:hover {
+    background-color: #0056b3;
+    transform: translateY(-2px) translateZ(0);
+    box-shadow: 0 6px 12px rgba(0, 68, 148, 0.4);
+}
+
+.route-expand-button:active {
+    transform: translateY(-1px) translateZ(0);
+    box-shadow: 0 3px 6px rgba(0, 68, 148, 0.3);
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.route-expand-text {
+    font-size: 10px;
+    font-weight: 600;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Smooth text transitions */
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.route-expand-icon {
+    /* Enhanced icon rotation with smooth easing */
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 9px;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Hardware acceleration */
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+.route-expand-icon.expanded {
+    transform: rotate(180deg) translateZ(0);
+}
+
+.route-expand-icon.collapsed {
+    transform: rotate(0deg) translateZ(0);
+}
+
+/* Smooth expansion container for route stations */
+.route-expansion-container {
+    width: 100%;
+    overflow: hidden;
+    /* Smooth height animation */
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 1;
+    max-height: 1000px;
+    transform: translateZ(0);
+}
+
+.route-expansion-container.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin: 0;
+    padding: 0;
+    /* Faster collapse animation */
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+/* Enhanced inline route station styles with smooth animations */
+.inline-route-station {
+    display: flex;
+    align-items: flex-start;
+    padding: 8px 0;
+    margin: 4px 0;
+    width: 100%;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    pointer-events: auto;
+    /* Smooth fade-in animation for stations */
+    opacity: 1;
+    transform: translateY(0);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Animation for station appearance */
+.inline-route-station.entering {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.inline-route-station.entered {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.inline-station-line {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-right: 12px;
+    flex-shrink: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.inline-station-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #004494;
+    border: 2px solid #004494;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Smooth dot scaling animation */
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: scale(1);
+}
+
+.inline-station-dot:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 8px rgba(0, 68, 148, 0.4);
+}
+
+.inline-connection-line {
+    width: 2px;
+    height: 25px;
+    background-color: #004494;
+    margin-top: 2px;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Smooth line growth animation */
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: scaleY(1);
+    transform-origin: top;
+}
+
+.inline-station-info {
+    flex: 1;
+    min-width: 0;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    /* Smooth text appearance */
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inline-station-name {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 3px;
+    color: #333;
+    line-height: 1.3;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+.inline-station-platform {
+    font-size: 10px;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    padding: 2px 5px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 4px;
+    border: 1px solid #e9ecef;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    /* Smooth platform badge animation */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inline-station-platform:hover {
+    background-color: #e9ecef;
+    transform: translateY(-1px);
+}
+
+.inline-station-times {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+.inline-time-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+.inline-time-label {
+    color: #6c757d;
+    font-weight: 500;
+    min-width: 35px;
+    font-size: 11px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+.inline-time-value {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+    color: #333;
+    font-size: 12px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+.inline-delay {
+    background-color: #f44336;
+    color: white;
+    padding: 1px 4px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    /* Smooth delay badge animation */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inline-delay:hover {
+    background-color: #d32f2f;
+    transform: scale(1.05);
+}
+
+.inline-station-alerts {
+    margin-top: 5px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+.inline-alert {
+    font-size: 10px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    margin-bottom: 2px;
+    display: block;
+    line-height: 1.2;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    /* Smooth alert animations */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.inline-alert:hover {
+    transform: translateX(2px);
+    opacity: 0.9;
+}
+
+.inline-message {
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border-left: 2px solid #2196f3;
+}
+
+.inline-notice {
+    background-color: #fff3e0;
+    color: #f57c00;
+    border-left: 2px solid #ff9800;
+}
+
+.inline-warning {
+    background-color: #ffebee;
+    color: #d32f2f;
+    border-left: 2px solid #f44336;
 }
 
 .train-details-info {
     margin-top: 15px;
     border-top: 1px solid #e0e0e0;
     padding-top: 15px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .info-row {
     display: flex;
     margin-bottom: 8px;
     font-size: 14px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .info-label {
     font-weight: 500;
     min-width: 100px;
     color: #555;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .info-value {
     font-weight: 400;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .link-row {
@@ -169,17 +641,45 @@
     font-weight: 500;
     display: inline-flex;
     align-items: center;
+    pointer-events: auto;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    /* MAUI WebView: Ensure links work */
+    touch-action: manipulation;
+    /* Smooth link transitions */
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tracking-link:hover {
+    color: #0056b3;
+    transform: translateY(-1px);
 }
 
 .external-icon {
     margin-left: 4px;
     font-size: 12px;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Smooth icon transitions */
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tracking-link:hover .external-icon {
+    transform: translate(1px, -1px);
 }
 
 .train-details-loading {
     padding: 20px;
     text-align: center;
     color: #555;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 /* Delay summary styles */
@@ -189,6 +689,10 @@
     border-radius: 6px;
     padding: 10px;
     margin-top: 15px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .delay-header {
@@ -196,12 +700,20 @@
     color: #e65100;
     margin-bottom: 8px;
     font-size: 14px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .delay-item {
     color: #bf360c;
     font-size: 13px;
     margin-bottom: 4px;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 
 .delay-item:last-child {
@@ -283,18 +795,60 @@
     color: #1976d2;
 }
 
-/* Add media query for mobile */
+/* MAUI WebView: Ensure scrolling works on mobile platforms */
 @media (max-width: 600px) {
     .train-details-container {
-        top: auto;
-        right: 0;
-        bottom: 0;
-        left: 0;
-        max-width: none;
-        width: 100%;
+        top: 10px;
+        right: 10px;
+        bottom: auto;
+        left: auto;
+        max-width: calc(100vw - 20px);
+        width: auto;
+        max-height: 60vh;
+        /* Maintain higher z-index on mobile */
+        z-index: 1100;
+        /* MAUI WebView: Improve mobile performance */
+        transform: translateZ(0);
     }
     
     .train-details-box {
-        border-radius: 8px 8px 0 0;
+        border-radius: 8px;
+        /* MAUI WebView: Mobile optimization */
+        touch-action: manipulation;
+    }
+    
+    .route-expand-button {
+        padding: 8px 12px;
+        font-size: 12px;
+        /* MAUI WebView: Improve mobile touch targets */
+        min-height: 44px;
+        touch-action: manipulation;
+        /* Enhanced mobile button animations */
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .route-expand-button:active {
+        transform: scale(0.95) translateZ(0);
+    }
+    
+    .inline-station-name {
+        font-size: 12px;
+    }
+    
+    .inline-station-times {
+        font-size: 11px;
+    }
+    
+    .inline-time-row {
+        font-size: 11px;
+    }
+    
+    /* Faster animations on mobile for better performance */
+    .route-expansion-container {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .route-expansion-container.collapsed {
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.6, 1);
     }
 }

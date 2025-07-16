@@ -6,6 +6,14 @@
 @using LiveTrains.Components
 @using System.Collections.Generic
 
+@* Move train details container above the map *@
+@if (currentTrainDetails != null)
+{
+    <div class="train-details-container">
+        <TrainDetailsBox TrainDetails="currentTrainDetails" OnClose="ClearTrainDetails" />
+    </div>
+}
+
 <div class="map-container" id="mapId">
     <!-- GPS Filter Toggle Button -->
     <div class="map-controls">
@@ -26,13 +34,6 @@
                 var totalTrains = trainPositions.Count;
             }
             Trains: @totalTrains | GPS: @gpsTrains (@((gpsTrains * 100.0 / totalTrains).ToString("F0"))%)
-        </div>
-    }
-    
-    @if (currentTrainDetails != null)
-    {
-        <div class="train-details-container">
-            <TrainDetailsBox TrainDetails="currentTrainDetails" OnClose="ClearTrainDetails" />
         </div>
     }
 </div>
@@ -305,7 +306,7 @@
             "SKMT" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4tnUGPLmH0JGcxnChJETsYDw5nIj8Wcol00Jdl-T5qTTpHSEPPiT3FWRuxNdu",
             "£KA" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSVlWBUS9YeV2_oQsB3-ldmOtT_DIFZAlxeCAGObCN_vaU4bbjBkwXGhBKk-4Fq",
             "KM£" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw",
-            _ => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX16d"
+            _ => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX-16d"
         };
     }
 
