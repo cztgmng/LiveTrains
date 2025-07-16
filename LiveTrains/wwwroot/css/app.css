@@ -38,6 +38,7 @@ html, body {
 .leaflet-container {
     height: 100%;
     width: 100%;
+    background: #463144 !important;
 }
 
 /* Optional: style for train icons if needed */
