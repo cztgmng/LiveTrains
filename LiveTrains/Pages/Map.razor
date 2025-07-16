@@ -157,9 +157,17 @@
                     warnings = s.Warnings
                 }).ToArray();
                 
-                // Draw track on map with station names and stations
-                await JSRuntime.InvokeVoidAsync("leafletInterop.drawTrack", 
-                    trackInfo.Coordinates.Select(c => new[] { c.lat, c.lng }).ToList(),
+                // Prepare coordinates with delay information for JavaScript
+                var coordinatesWithDelayForJS = trackInfo.CoordinatesWithDelay.Select(c => new
+                {
+                    lat = c.Latitude,
+                    lng = c.Longitude,
+                    delay = c.Delay
+                }).ToArray();
+                
+                // Draw track on map with station names, stations, and delay information
+                await JSRuntime.InvokeVoidAsync("leafletInterop.drawTrackWithDelay", 
+                    coordinatesWithDelayForJS,
                     new { start = trackInfo.StartStationName, end = trackInfo.EndStationName },
                     stationsForJS);
             }

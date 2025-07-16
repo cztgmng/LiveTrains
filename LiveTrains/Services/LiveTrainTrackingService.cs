@@ -51,10 +51,10 @@ namespace LiveTrains.Services
         public string Language { get; set; } = string.Empty;
         public string ScheduledArrival { get; set; } = string.Empty;
         public string ActualArrival { get; set; } = string.Empty;
-        public int ArrivalDelay { get; set; } = 0;
+        public double ArrivalDelay { get; set; } = 0;
         public string ScheduledDeparture { get; set; } = string.Empty;
         public string ActualDeparture { get; set; } = string.Empty;
-        public int DepartureDelay { get; set; } = 0;
+        public double DepartureDelay { get; set; } = 0;
         public string TransportType { get; set; } = string.Empty;
         public string Platform { get; set; } = string.Empty;
         public double Latitude { get; set; }
@@ -65,10 +65,19 @@ namespace LiveTrains.Services
         public List<string> AdditionalInfo { get; set; } = new();
     }
 
-    // Add this class to return track info including station names
+    // Add this new class to store track coordinates with delay information
+    public class TrackCoordinate
+    {
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public double Delay { get; set; } = 0; // Delay in minutes from "o" property
+    }
+
+    // Add this class to return track info including station names and delay info
     public class TrainTrackInfo
     {
         public List<(double lat, double lng)> Coordinates { get; set; } = new();
+        public List<TrackCoordinate> CoordinatesWithDelay { get; set; } = new(); // New property for coordinates with delay
         public string StartStationName { get; set; } = string.Empty;
         public string EndStationName { get; set; } = string.Empty;
         public List<TrainStation> Stations { get; set; } = new();
@@ -89,8 +98,8 @@ namespace LiveTrains.Services
         public List<TrainStation> Stations { get; set; } = new();
         public string StartTime { get; set; } = string.Empty;
         public string EndTime { get; set; } = string.Empty;
-        public int StartDelay { get; set; } = 0;
-        public int EndDelay { get; set; } = 0;
+        public double StartDelay { get; set; } = 0;
+        public double EndDelay { get; set; } = 0;
     }
 
     public class LiveTrainTrackingService
@@ -703,6 +712,7 @@ namespace LiveTrains.Services
         {
             var trackInfo = new TrainTrackInfo();
             var coords = new List<(double lat, double lng)>();
+            var coordsWithDelay = new List<TrackCoordinate>(); // New list for coordinates with delay
             
             // Ensure we have a valid PID
             if (string.IsNullOrEmpty(_mapPagePid))
@@ -789,6 +799,7 @@ namespace LiveTrains.Services
                             if (stationJson.TryGetProperty("b", out var langElement))
                                 station.Language = langElement.GetString() ?? "";
                             
+
                             if (stationJson.TryGetProperty("c", out var schedArrElement))
                                 station.ScheduledArrival = schedArrElement.GetString() ?? "";
                             
@@ -796,29 +807,36 @@ namespace LiveTrains.Services
                                 station.ActualArrival = actualArrElement.GetString() ?? "";
                             
                             if (stationJson.TryGetProperty("e", out var arrDelayElement))
-                                station.ArrivalDelay = arrDelayElement.GetInt32();
+                                station.ArrivalDelay = arrDelayElement.GetDouble();
                             
+
                             if (stationJson.TryGetProperty("f", out var schedDepElement))
                                 station.ScheduledDeparture = schedDepElement.GetString() ?? "";
                             
+
                             if (stationJson.TryGetProperty("g", out var actualDepElement))
                                 station.ActualDeparture = actualDepElement.GetString() ?? "";
                             
                             if (stationJson.TryGetProperty("h", out var depDelayElement))
-                                station.DepartureDelay = depDelayElement.GetInt32();
+                                station.DepartureDelay = depDelayElement.GetDouble();
                             
+
                             if (stationJson.TryGetProperty("i", out var transportElement))
                                 station.TransportType = transportElement.GetString() ?? "";
                             
+
                             if (stationJson.TryGetProperty("j", out var platformElement))
                                 station.Platform = platformElement.GetString() ?? "";
                             
+
                             if (stationJson.TryGetProperty("k", out var latElement))
                                 station.Latitude = latElement.GetDouble();
                             
+
                             if (stationJson.TryGetProperty("l", out var lngElement))
                                 station.Longitude = lngElement.GetDouble();
                             
+
                             // Extract arrays of additional information
                             if (stationJson.TryGetProperty("m", out var messagesElement))
                             {
@@ -828,6 +846,7 @@ namespace LiveTrains.Services
                                 }
                             }
                             
+
                             if (stationJson.TryGetProperty("n", out var noticesElement))
                             {
                                 foreach (var notice in noticesElement.EnumerateArray())
@@ -836,6 +855,7 @@ namespace LiveTrains.Services
                                 }
                             }
                             
+
                             if (stationJson.TryGetProperty("o", out var warningsElement))
                             {
                                 foreach (var warning in warningsElement.EnumerateArray())
@@ -844,6 +864,7 @@ namespace LiveTrains.Services
                                 }
                             }
                             
+
                             if (stationJson.TryGetProperty("p", out var additionalElement))
                             {
                                 foreach (var info in additionalElement.EnumerateArray())
@@ -852,6 +873,7 @@ namespace LiveTrains.Services
                                 }
                             }
                             
+
                             trackInfo.Stations.Add(station);
                         }
                         Debug.WriteLine($"Extracted {trackInfo.Stations.Count} stations");
@@ -892,6 +914,7 @@ namespace LiveTrains.Services
 
                     if (pointsArray != null)
                     {
+                        int coordsWithDelayCount = 0;
                         foreach (var point in pointsArray.Value.EnumerateArray())
                         {
                             // With this block to handle array of coordinates:
@@ -902,6 +925,21 @@ namespace LiveTrains.Services
                                     var lat = coord.GetProperty("s").GetDouble();
                                     var lng = coord.GetProperty("d").GetDouble();
                                     coords.Add((lat, lng));
+                                    
+                                    // Extract delay information from "o" property
+                                    double delay = 0;
+                                    if (coord.TryGetProperty("o", out var delayProp))
+                                    {
+                                        delay = delayProp.GetDouble();
+                                        if (delay > 0) coordsWithDelayCount++;
+                                    }
+                                    
+                                    coordsWithDelay.Add(new TrackCoordinate 
+                                    { 
+                                        Latitude = lat, 
+                                        Longitude = lng, 
+                                        Delay = delay 
+                                    });
                                 }
                             }
                             else
@@ -909,9 +947,24 @@ namespace LiveTrains.Services
                                 var lat = point.GetProperty("s").GetDouble();
                                 var lng = point.GetProperty("d").GetDouble();
                                 coords.Add((lat, lng));
+                                
+                                // Extract delay information from "o" property
+                                double delay = 0;
+                                if (point.TryGetProperty("o", out var delayProp))
+                                {
+                                    delay = delayProp.GetDouble();
+                                    if (delay > 0) coordsWithDelayCount++;
+                                }
+                                
+                                coordsWithDelay.Add(new TrackCoordinate 
+                                { 
+                                    Latitude = lat, 
+                                    Longitude = lng, 
+                                    Delay = delay 
+                                });
                             }
                         }
-                        Debug.WriteLine($"Extracted {coords.Count} track coordinates");
+                        Debug.WriteLine($"Extracted {coords.Count} track coordinates, {coordsWithDelayCount} with delays > 0");
                     }
                     else
                     {
@@ -929,6 +982,7 @@ namespace LiveTrains.Services
             }
             
             trackInfo.Coordinates = coords;
+            trackInfo.CoordinatesWithDelay = coordsWithDelay; // Set the new property
             return trackInfo;
         }
 

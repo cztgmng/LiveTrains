@@ -26,7 +26,7 @@
                                 <span class="time">@TrainDetails.StartTime</span>
                                 @if (TrainDetails.StartDelay > 0)
                                 {
-                                    <span class="delay">+@TrainDetails.StartDelay min</span>
+                                    <span class="delay">+@TrainDetails.StartDelay.ToString("F1") min</span>
                                 }
                             </div>
                         }
@@ -43,7 +43,7 @@
                                 <span class="time">@TrainDetails.EndTime</span>
                                 @if (TrainDetails.EndDelay > 0)
                                 {
-                                    <span class="delay">+@TrainDetails.EndDelay min</span>
+                                    <span class="delay">+@TrainDetails.EndDelay.ToString("F1") min</span>
                                 }
                             </div>
                         }
@@ -86,11 +86,11 @@
                     <div class="delay-header">⚠️ Delays Detected</div>
                     @if (TrainDetails.StartDelay > 0)
                     {
-                        <div class="delay-item">Start: +@TrainDetails.StartDelay min</div>
+                        <div class="delay-item">Start: +@TrainDetails.StartDelay.ToString("F1") min</div>
                     }
                     @if (TrainDetails.EndDelay > 0)
                     {
-                        <div class="delay-item">End: +@TrainDetails.EndDelay min</div>
+                        <div class="delay-item">End: +@TrainDetails.EndDelay.ToString("F1") min</div>
                     }
                 </div>
             }

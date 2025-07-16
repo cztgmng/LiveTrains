@@ -261,6 +261,257 @@ window.leafletInterop = {
         }
     },
 
+    // Draw a track on the map with stations and delay-based coloring
+    drawTrackWithDelay: function(coordinatesWithDelay, stationNames, stations) {
+        if (!this.map) return;
+        this.clearTrack();
+        
+        if (!coordinatesWithDelay || coordinatesWithDelay.length === 0) {
+            console.log("No coordinates with delay provided");
+            return;
+        }
+        
+        // Initialize track polylines array to store different colored segments
+        window._trackPolylines = window._trackPolylines || [];
+        
+        // Group consecutive coordinates by delay to create segments with same color
+        const segments = this.createDelaySegments(coordinatesWithDelay);
+        
+        console.log(`Creating ${segments.length} track segments based on delay`);
+        
+        // Draw each segment with its appropriate color
+        segments.forEach(segment => {
+            const polyline = L.polyline(segment.coordinates, {
+                color: this.getDelayColor(segment.delay),
+                weight: 4,
+                opacity: 0.8
+            }).addTo(this.map);
+            
+            // Add tooltip to show delay information
+            if (segment.delay > 0) {
+                polyline.bindTooltip(`Delay: +${segment.delay.toFixed(1)} min`, {
+                    permanent: false,
+                    direction: 'center'
+                });
+            } else {
+                polyline.bindTooltip('On time', {
+                    permanent: false,
+                    direction: 'center'
+                });
+            }
+            
+            window._trackPolylines.push(polyline);
+        });
+        
+        // Initialize stations marker array
+        window._stationMarkers = window._stationMarkers || [];
+        
+        // Add station markers if provided
+        if (stations && stations.length > 0) {
+            stations.forEach((station, index) => {
+                // Create station marker
+                var stationIcon = L.divIcon({
+                    className: 'station-marker',
+                    html: `<div class="station-dot" style="background-color: ${this.getStationColor(station, index, stations.length)}; width: 8px; height: 8px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 3px rgba(0,0,0,0.5);"></div>`,
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                });
+                
+                var marker = L.marker([station.latitude, station.longitude], {
+                    icon: stationIcon,
+                    zIndexOffset: 100
+                }).addTo(this.map);
+                
+                // Create popup content with timing and delay information
+                var popupContent = this.createStationPopupContent(station);
+                marker.bindPopup(popupContent);
+                
+                // Add hover effects
+                marker.on('mouseover', function() {
+                    this.openPopup();
+                });
+                
+                marker.on('mouseout', function() {
+                    setTimeout(() => {
+                        if (!this.getPopup().isOpen() || !this.getPopup()._container.matches(':hover')) {
+                            this.closePopup();
+                        }
+                    }, 100);
+                });
+                
+                window._stationMarkers.push(marker);
+            });
+        }
+        
+        // Add markers for start and end of track (fallback if no station data)
+        if (coordinatesWithDelay.length > 0 && (!stations || stations.length === 0)) {
+            var startPoint = [coordinatesWithDelay[0].lat, coordinatesWithDelay[0].lng];
+            var endPoint = [coordinatesWithDelay[coordinatesWithDelay.length - 1].lat, coordinatesWithDelay[coordinatesWithDelay.length - 1].lng];
+            
+            // Get station names from the parameter or use default
+            var startStationName = stationNames && stationNames.start ? stationNames.start : 'Start Station';
+            var endStationName = stationNames && stationNames.end ? stationNames.end : 'End Station';
+            
+            // Start marker
+            window._startMarker = L.marker(startPoint, {
+                icon: L.divIcon({
+                    className: 'station-marker start-station',
+                    html: '<div style="background-color: green; width: 12px; height: 12px; border-radius: 50%;"></div>',
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                })
+            }).addTo(this.map)
+              .bindPopup(startStationName);
+            
+            // End marker
+            window._endMarker = L.marker(endPoint, {
+                icon: L.divIcon({
+                    className: 'station-marker end-station',
+                    html: '<div style="background-color: red; width: 12px; height: 12px; border-radius: 50%;"></div>',
+                    iconSize: [12, 12],
+                    iconAnchor: [6, 6]
+                })
+            }).addTo(this.map)
+              .bindPopup(endStationName);
+        }
+        
+        // Fit map to track bounds using the first polyline
+        if (window._trackPolylines && window._trackPolylines.length > 0) {
+            // Create a group of all polylines to get combined bounds
+            var group = L.featureGroup(window._trackPolylines);
+            this.map.fitBounds(group.getBounds());
+        }
+        
+        // Add delay legend
+        this.addDelayLegend();
+    },
+
+    // Create segments of consecutive coordinates with the same delay
+    createDelaySegments: function(coordinatesWithDelay) {
+        if (!coordinatesWithDelay || coordinatesWithDelay.length === 0) {
+            return [];
+        }
+        
+        const segments = [];
+        let currentSegment = {
+            delay: coordinatesWithDelay[0].delay || 0, // Default to 0 if delay is undefined
+            coordinates: [[coordinatesWithDelay[0].lat, coordinatesWithDelay[0].lng]]
+        };
+        
+        for (let i = 1; i < coordinatesWithDelay.length; i++) {
+            const coord = coordinatesWithDelay[i];
+            const coordDelay = coord.delay || 0; // Default to 0 if delay is undefined
+            
+            // If delay is the same as current segment, add to current segment
+            if (coordDelay === currentSegment.delay) {
+                currentSegment.coordinates.push([coord.lat, coord.lng]);
+            } else {
+                // Delay changed, finish current segment and start new one
+                if (currentSegment.coordinates.length > 1) {
+                    segments.push(currentSegment);
+                }
+                currentSegment = {
+                    delay: coordDelay,
+                    coordinates: [
+                        // Include the last point from previous segment to ensure continuity
+                        currentSegment.coordinates[currentSegment.coordinates.length - 1],
+                        [coord.lat, coord.lng]
+                    ]
+                };
+            }
+        }
+        
+        // Add the last segment if it has more than one coordinate
+        if (currentSegment.coordinates.length > 1) {
+            segments.push(currentSegment);
+        }
+        
+        // If no segments were created (all single points), create one segment with all points
+        if (segments.length === 0 && coordinatesWithDelay.length > 1) {
+            segments.push({
+                delay: coordinatesWithDelay[0].delay || 0,
+                coordinates: coordinatesWithDelay.map(coord => [coord.lat, coord.lng])
+            });
+        }
+        
+        return segments;
+    },
+
+    // Get color based on delay time
+    getDelayColor: function(delay) {
+        if (delay <= 0) {
+            return '#22aa22'; // Green for on time or early
+        } else if (delay <= 5) {
+            return '#ffaa00'; // Orange for small delays (1-5 minutes)
+        } else if (delay <= 15) {
+            return '#ff6600'; // Red-orange for medium delays (6-15 minutes)
+        } else if (delay <= 30) {
+            return '#ff3300'; // Red for significant delays (16-30 minutes)
+        } else {
+            return '#aa0000'; // Dark red for severe delays (30+ minutes)
+        }
+    },
+
+    // Add a legend showing delay color coding
+    addDelayLegend: function() {
+        if (!this.map) return;
+        
+        // Remove existing legend if present
+        if (window._delayLegend) {
+            this.map.removeControl(window._delayLegend);
+        }
+        
+        var DelayLegend = L.Control.extend({
+            options: {
+                position: 'bottomright'
+            },
+            onAdd: function() {
+                var container = L.DomUtil.create('div', 'delay-legend');
+                container.innerHTML = `
+                    <div style="background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.2); font-size: 12px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">Track Delays</div>
+                        <div style="display: flex; align-items: center; margin: 2px 0;">
+                            <div style="width: 20px; height: 3px; background: #22aa22; margin-right: 5px;"></div>
+                            <span>On time</span>
+                        </div>
+                        <div style="display: flex; align-items: center; margin: 2px 0;">
+                            <div style="width: 20px; height: 3px; background: #ffaa00; margin-right: 5px;"></div>
+                            <span>1-5 min</span>
+                        </div>
+                        <div style="display: flex; align-items: center; margin: 2px 0;">
+                            <div style="width: 20px; height: 3px; background: #ff6600; margin-right: 5px;"></div>
+                            <span>6-15 min</span>
+                        </div>
+                        <div style="display: flex; align-items: center; margin: 2px 0;">
+                            <div style="width: 20px; height: 3px; background: #ff3300; margin-right: 5px;"></div>
+                            <span>16-30 min</span>
+                        </div>
+                        <div style="display: flex; align-items: center; margin: 2px 0;">
+                            <div style="width: 20px; height: 3px; background: #aa0000; margin-right: 5px;"></div>
+                            <span>30+ min</span>
+                        </div>
+                    </div>
+                `;
+                return container;
+            }
+        });
+        
+        window._delayLegend = new DelayLegend();
+        this.map.addControl(window._delayLegend);
+    },
+
+    // Draw a track on the map with stations (fallback for backward compatibility)
+    drawTrack: function(latlngs, stationNames, stations) {
+        // Convert old format to new format and call the delay-aware method
+        const coordinatesWithDelay = latlngs.map(coord => ({
+            lat: Array.isArray(coord) ? coord[0] : coord.lat,
+            lng: Array.isArray(coord) ? coord[1] : coord.lng,
+            delay: 0 // Default to no delay for backward compatibility
+        }));
+        
+        this.drawTrackWithDelay(coordinatesWithDelay, stationNames, stations);
+    },
+
     // Helper function to get station color based on position and delays
     getStationColor: function(station, index, totalStations) {
         // Color based on delays
@@ -295,7 +546,7 @@ window.leafletInterop = {
                     <span class="scheduled-time">${station.scheduledArrival}</span>`;
             
             if (station.arrivalDelay > 0) {
-                content += ` <span class="delay-info" style="color: white;">+${station.arrivalDelay}min</span>`;
+                content += ` <span class="delay-info" style="color: white;">+${station.arrivalDelay.toFixed(1)}min</span>`;
             }
             
             if (station.actualArrival && station.actualArrival !== station.scheduledArrival) {
@@ -313,7 +564,7 @@ window.leafletInterop = {
                     <span class="scheduled-time">${station.scheduledDeparture}</span>`;
             
             if (station.departureDelay > 0) {
-                content += ` <span class="delay-info" style="color: white;">+${station.departureDelay}min</span>`;
+                content += ` <span class="delay-info" style="color: white;">+${station.departureDelay.toFixed(1)}min</span>`;
             }
             
             if (station.actualDeparture && station.actualDeparture !== station.scheduledDeparture) {
@@ -341,6 +592,15 @@ window.leafletInterop = {
 
     // Clear the track from the map
     clearTrack: function() {
+        // Clear multiple polylines if they exist
+        if (window._trackPolylines) {
+            window._trackPolylines.forEach(polyline => {
+                this.map.removeLayer(polyline);
+            });
+            window._trackPolylines = [];
+        }
+        
+        // Clear single polyline for backward compatibility
         if (window._trackPolyline) {
             this.map.removeLayer(window._trackPolyline);
             window._trackPolyline = null;
@@ -362,6 +622,12 @@ window.leafletInterop = {
                 this.map.removeLayer(marker);
             });
             window._stationMarkers = [];
+        }
+        
+        // Clear delay legend
+        if (window._delayLegend) {
+            this.map.removeControl(window._delayLegend);
+            window._delayLegend = null;
         }
     },
 

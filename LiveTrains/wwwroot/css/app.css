@@ -127,3 +127,86 @@ html, body {
     font-size: 12px;
     max-width: 200px;
 }
+
+/* Delay Legend Styling */
+.delay-legend {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.delay-legend .leaflet-control {
+    margin-bottom: 10px;
+}
+
+/* Station marker styling */
+.station-marker {
+    background: transparent !important;
+    border: none !important;
+}
+
+.station-dot {
+    transition: transform 0.2s ease;
+}
+
+.station-marker:hover .station-dot {
+    transform: scale(1.3);
+}
+
+/* Station popup styling */
+.station-popup {
+    min-width: 200px;
+}
+
+.station-popup .station-name {
+    color: #333;
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.station-popup .station-platform {
+    color: #666;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.station-popup .timing-info {
+    margin: 5px 0;
+    font-size: 12px;
+}
+
+.station-popup .timing-label {
+    font-weight: bold;
+    color: #555;
+}
+
+.station-popup .scheduled-time {
+    color: #333;
+    margin-left: 5px;
+}
+
+.station-popup .delay-info {
+    background: #ff4444;
+    color: white;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+    margin-left: 5px;
+}
+
+.station-popup .actual-time {
+    color: #666;
+    font-style: italic;
+    margin-left: 5px;
+}
+
+.station-popup .additional-info {
+    margin-top: 8px;
+    padding-top: 5px;
+    border-top: 1px solid #eee;
+}
+
+.station-popup .info-message {
+    color: #666;
+    font-size: 11px;
+    margin: 2px 0;
+}
