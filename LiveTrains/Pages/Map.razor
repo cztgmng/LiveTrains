@@ -130,6 +130,8 @@
             // Get detailed train information
             currentTrainDetails = await TrainTrackingService.GetTrainDetailsAsync(trainNumber);
             
+            Console.WriteLine($"Train details loaded: {currentTrainDetails?.Number}");
+            
             // Get and draw the train track
             var trackInfo = await TrainTrackingService.GetTrainTrackAsync(trainNumber);
             
@@ -180,12 +182,15 @@
             // Hide loading indicator
             await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", false);
             
+            Console.WriteLine($"Train details set to: {currentTrainDetails != null}");
+            
             // Trigger UI update
             StateHasChanged();
         }
         catch (Exception ex) 
         {
             Console.WriteLine($"Error fetching train data: {ex.Message}");
+            Console.WriteLine($"Exception details: {ex}");
             await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", false);
         }
         
@@ -198,26 +203,29 @@
     {
         try
         {
-            JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
-            foreach (var train in trainPositions)
+            if (_objectReference == null)
             {
-                var iconUrl = GetCarrierIconUrl(train.Type);
-                var isSelected = train.Number == selectedTrainNumber;
-                var hideOthers = !string.IsNullOrEmpty(selectedTrainNumber); // Hide others if a train is selected
-                
-                // Create train title with GPS indicator
-                var trainTitle = $"{train.Number} ({train.Type})";
-                if (train.HasGps)
-                {
-                    trainTitle += " ??"; // Add satellite emoji for GPS trains
-                }
-                
-                // Pass train number as identifier and the selected state
-                JSRuntime.InvokeVoidAsync("leafletInterop.addTrainMarkerWithClick", 
-                    train.Latitude, train.Longitude, 
-                    trainTitle, iconUrl, 
-                    DotNetObjectReference.Create(this), train.Number, isSelected, hideOthers);
+                Console.WriteLine("Warning: _objectReference is null, cannot wire up click events");
+                return;
             }
+            
+            // Use the new smooth animation method instead of clearing and recreating markers
+            var trainData = trainPositions.Select(train => new
+            {
+                number = train.Number,
+                latitude = train.Latitude,
+                longitude = train.Longitude,
+                type = train.Type,
+                hasGps = train.HasGps
+            }).ToArray();
+
+            var hideOthers = !string.IsNullOrEmpty(selectedTrainNumber);
+            
+            Console.WriteLine($"Updating {trainData.Length} train markers, hideOthers: {hideOthers}, selected: {selectedTrainNumber}");
+            
+            // Call the smooth update method with the DotNetObjectReference
+            JSRuntime.InvokeVoidAsync("leafletInterop.updateTrainPositionsSmooth", 
+                trainData, selectedTrainNumber, hideOthers, _objectReference);
         }
         catch (Exception ex)
         {
@@ -279,6 +287,9 @@
         
         // Show all trains again when details are closed
         await JSRuntime.InvokeVoidAsync("leafletInterop.showAllTrains");
+        
+        // Update markers to remove selection highlighting
+        UpdateTrainMarkersOnMap();
     }
 
     // Clear the track when no longer needed
@@ -287,6 +298,9 @@
         currentTrack = null;
         selectedTrainNumber = null;
         await JSRuntime.InvokeVoidAsync("leafletInterop.clearTrack");
+        
+        // Clear the smooth animation markers and recreate them to ensure proper state
+        await JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
         UpdateTrainMarkersOnMap();
     }
 
@@ -322,6 +336,24 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error toggling GPS filter: {ex.Message}");
+        }
+    }
+    
+    // Debug method to test train details display
+    private async Task TestTrainDetails()
+    {
+        try
+        {
+            if (trainPositions.Any())
+            {
+                var firstTrain = trainPositions.First();
+                Console.WriteLine($"Testing train details for: {firstTrain.Number}");
+                await OnTrainMarkerClicked(firstTrain.Number);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in test train details: {ex.Message}");
         }
     }
 

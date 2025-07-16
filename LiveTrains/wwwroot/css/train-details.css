@@ -12,6 +12,11 @@
     isolation: isolate;
     /* MAUI WebView: Force stacking context */
     transform: translateZ(0);
+    /* Ensure visibility */
+    visibility: visible;
+    opacity: 1;
+    /* Debug: Add a background color to help identify if the container is being rendered */
+    background-color: rgba(255, 255, 255, 0.05);
 }
 
 .train-details-box {
@@ -33,6 +38,11 @@
     /* MAUI WebView: Force hardware acceleration */
     will-change: transform;
     transform: translateZ(0);
+    /* Ensure visibility */
+    visibility: visible;
+    opacity: 1;
+    /* Debug: Add a border to help identify the element */
+    border: 2px solid #004494;
 }
 
 .train-details-header {
@@ -850,5 +860,33 @@
     
     .route-expansion-container.collapsed {
         transition: all 0.25s cubic-bezier(0.4, 0, 0.6, 1);
+    }
+}
+
+/* Train marker smooth animation styles */
+.leaflet-marker-icon {
+    /* Enable hardware acceleration for smooth animations */
+    will-change: transform;
+    transform: translateZ(0);
+    /* Smooth transitions for position changes */
+    transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced smooth marker transitions for selected state */
+.leaflet-marker-icon.selected {
+    transform: translateZ(0) scale(1.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth opacity transitions for show/hide */
+.leaflet-marker-icon {
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* MAUI WebView: Ensure animations work smoothly on all platforms */
+@media (max-width: 600px) {
+    .leaflet-marker-icon {
+        /* Slightly faster animations on mobile for better performance */
+        transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
     }
 }

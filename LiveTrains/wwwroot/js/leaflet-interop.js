@@ -33,18 +33,6 @@ window.leafletInterop = {
         return true;
     },
     
-    // Add a marker to the map at the specified coordinates
-    //addMarker: function (latitude, longitude, title) {
-    //    if (this.map == null) return false;
-    //    
-    //    const marker = L.marker([latitude, longitude]).addTo(this.map);
-    //    if (title) {
-    //        marker.bindPopup(title).openPopup();
-    //    }
-    //    
-    //    return true;
-    //},
-    
     // Set the view to specified coordinates and zoom level
     setView: function (latitude, longitude, zoomLevel) {
         if (this.map == null) return false;
@@ -80,28 +68,207 @@ window.leafletInterop = {
         });
     },
 
-    // Add a train marker with a custom icon
-    //addTrainMarker: function(lat, lng, label, iconUrl) {
-    //    if (!this.map) return false;
-    //
-    //    var icon = L.icon({
-    //        iconUrl: iconUrl,
-    //        iconSize: [32, 32], // Adjust size as needed
-    //        iconAnchor: [16, 16],
-    //        popupAnchor: [0, -16]
-    //    });
-    //
-    //    var marker = L.marker([lat, lng], { icon: icon }).bindPopup(label);
-    //    marker.addTo(this.map);
-    //
-    //    window._markers = window._markers || [];
-    //    window._markers.push(marker);
-    //},
+    // Smooth animation function for moving markers with improved performance
+    animateMarkerToPosition: function(marker, newLatLng, duration = 1000) {
+        if (!marker || !newLatLng) return;
+        
+        var startLatLng = marker.getLatLng();
+        var startTime = Date.now();
+        
+        // If the marker is at the same position, don't animate
+        var distance = startLatLng.distanceTo(newLatLng);
+        if (distance < 1) { // Less than 1 meter difference
+            return;
+        }
+        
+        // Adjust animation duration based on distance for more natural movement
+        var adjustedDuration = Math.min(Math.max(duration * (distance / 1000), 300), 2000);
+        
+        // Cancel any existing animation for this marker
+        if (marker._animationId) {
+            cancelAnimationFrame(marker._animationId);
+        }
+        
+        var animate = function() {
+            var elapsed = Date.now() - startTime;
+            var progress = Math.min(elapsed / adjustedDuration, 1);
+            
+            // Use easing function for smooth animation (ease-in-out cubic)
+            var easeProgress = progress < 0.5 
+                ? 4 * progress * progress * progress
+                : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            
+            var currentLat = startLatLng.lat + (newLatLng.lat - startLatLng.lat) * easeProgress;
+            var currentLng = startLatLng.lng + (newLatLng.lng - startLatLng.lng) * easeProgress;
+            
+            marker.setLatLng([currentLat, currentLng]);
+            
+            if (progress < 1) {
+                marker._animationId = requestAnimationFrame(animate);
+            } else {
+                marker._animationId = null;
+            }
+        };
+        
+        marker._animationId = requestAnimationFrame(animate);
+    },
+
+    // Enhanced method to smoothly update train positions
+    updateTrainPositionsSmooth: function(trainPositions, selectedTrainNumber, hideOthers, dotNetRef) {
+        if (!this.map || !trainPositions) return;
+        
+        // Initialize markers map if it doesn't exist
+        if (!window._trainMarkersMap) {
+            window._trainMarkersMap = new Map();
+        }
+        
+        var markersMap = window._trainMarkersMap;
+        var currentTrainNumbers = new Set(trainPositions.map(t => t.number));
+        
+        // Remove markers for trains that no longer exist
+        for (let [trainNumber, marker] of markersMap) {
+            if (!currentTrainNumbers.has(trainNumber)) {
+                this.map.removeLayer(marker);
+                markersMap.delete(trainNumber);
+            }
+        }
+        
+        // Process each train position
+        trainPositions.forEach(train => {
+            var isSelected = train.number === selectedTrainNumber;
+            var shouldHide = hideOthers && !isSelected;
+            
+            if (shouldHide) {
+                // Hide marker if it exists
+                if (markersMap.has(train.number)) {
+                    markersMap.get(train.number).setOpacity(0);
+                }
+                return;
+            }
+            
+            var newLatLng = L.latLng(train.latitude, train.longitude);
+            var iconUrl = this.getCarrierIconUrl(train.type);
+            
+            // Create train title with GPS indicator
+            var trainTitle = `${train.number} (${train.type})`;
+            if (train.hasGps) {
+                trainTitle += " ??";
+            }
+            
+            if (markersMap.has(train.number)) {
+                // Update existing marker
+                var marker = markersMap.get(train.number);
+                
+                // Update marker position with smooth animation
+                this.animateMarkerToPosition(marker, newLatLng, 800);
+                
+                // Update marker appearance if selection state changed
+                var currentIconSize = isSelected ? 48 : 32;
+                var currentAnchor = isSelected ? [24, 24] : [16, 16];
+                var currentZIndex = isSelected ? 1000 : 0;
+                
+                var newIcon = L.icon({
+                    iconUrl: iconUrl,
+                    iconSize: [currentIconSize, currentIconSize],
+                    iconAnchor: currentAnchor,
+                    popupAnchor: [0, -16]
+                });
+                
+                marker.setIcon(newIcon);
+                marker.setZIndexOffset(currentZIndex);
+                marker.setOpacity(1);
+                
+                // Update popup content
+                marker.getPopup().setContent(trainTitle);
+                
+                // Ensure click event is attached (in case it wasn't before)
+                if (dotNetRef && !marker._hasClickEvent) {
+                    marker.on('click', function () {
+                        console.log(`Marker clicked for train: ${train.number}`);
+                        dotNetRef.invokeMethodAsync('OnTrainMarkerClicked', train.number);
+                    });
+                    marker._hasClickEvent = true;
+                    console.log(`Click event added to existing marker for train: ${train.number}`);
+                }
+                
+                // Handle selection state
+                if (isSelected && !marker.isPopupOpen()) {
+                    marker.openPopup();
+                } else if (!isSelected && marker.isPopupOpen()) {
+                    marker.closePopup();
+                }
+                
+            } else {
+                // Create new marker
+                var iconOptions = {
+                    iconUrl: iconUrl,
+                    iconSize: isSelected ? [48, 48] : [32, 32],
+                    iconAnchor: isSelected ? [24, 24] : [16, 16],
+                    popupAnchor: [0, -16]
+                };
+                
+                var icon = L.icon(iconOptions);
+                
+                var markerOptions = { 
+                    icon: icon,
+                    zIndexOffset: isSelected ? 1000 : 0
+                };
+                
+                var marker = L.marker(newLatLng, markerOptions).bindPopup(trainTitle);
+                
+                if (isSelected) {
+                    marker.openPopup();
+                }
+                
+                marker.addTo(this.map);
+                
+                // Add click event with the provided dotNetRef
+                if (dotNetRef) {
+                    marker.on('click', function () {
+                        console.log(`Marker clicked for train: ${train.number}`);
+                        dotNetRef.invokeMethodAsync('OnTrainMarkerClicked', train.number);
+                    });
+                    marker._hasClickEvent = true;
+                    console.log(`Click event added for train: ${train.number}`);
+                } else {
+                    console.warn(`No dotNetRef provided for train: ${train.number}`);
+                }
+                
+                // Store train number with marker for easy identification
+                marker.trainNumber = train.number;
+                markersMap.set(train.number, marker);
+            }
+        });
+    },
+
+    // Helper method to get carrier icon URL
+    getCarrierIconUrl: function(carrier) {
+        switch(carrier) {
+            case "IC": return "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTudaL7viYZdPkjE6I_ae3dROs1ZARywfz1ISyvzNNxKMg7B0l1XxTOiCb5R93_";
+            case "PR": return "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcShBZqpAHnRCy4-XJFYOpT1FB7Z9Hi3AMbR8Dogpsnj5lG4NH1tndbWIVAJsxYO";
+            case "KW": return "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSx1jf6nxAv6vG8Eh8GMeG6M4QVvs-sd_oqEW9gtggssgWzkHFrrm4_lq6vEjB9";
+            case "AR": return "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTV5nvINCi-sHP3nq4DfyqnlCPvMWMoWScdUMgq3rf3Sqt1S9pTy2dY31zqILcJ";
+            case "KS": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT812gFd2fScPbg1H8WTcLSSdPLr9lfUpW3CfGb3Q24v-rwiqCK3gHvTyGZi28_";
+            case "KD": return "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSWEd1ADcEp8OZEuCBKqCP5RrO3ofo6YMASk1qUMNkLvTi59oOPR6myIBVeIlw";
+            case "KM": return "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSpnufJ7waXBOck26ADz0COZAuDGD13FnNYYj5gVIdegrdv_FgJiDiyL1eJN9_x";
+            case "SKM": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRv1Cf4wQJ3iw5a0amylbxcWOyhsH4nRQ00QgSmiLxgifYYUFOjsvHhwWvmp1db";
+            case "SKMT": return "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4tnUGPLmH0JGcxnChJETsYDw5nIj8Wcol00Jdl-T5qTTpHSEPPiT3FWRuxNdu";
+            case "£KA": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSVlWBUS9YeV2_oQsB3-ldmOtT_DIFZAlxeCAGObCN_vaU4bbjBkwXGhBKk-4Fq";
+            case "KM£": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw";
+            default: return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX-16d";
+        }
+    },
 
     // Add a train marker with a custom icon and click event
     // Added isSelected parameter for highlighting selected train
     addTrainMarkerWithClick: function(lat, lng, label, iconUrl, dotNetRef, trainNumber, isSelected, hideOthers) {
         if (!this.map) return false;
+        
+        // Store dotNetRef for later use in smooth updates
+        if (!window._dotNetRefs) {
+            window._dotNetRefs = new Map();
+        }
+        window._dotNetRefs.set(trainNumber, dotNetRef);
         
         // If hideOthers is true and this train is not selected, don't add the marker
         if (hideOthers && !isSelected) {
@@ -141,24 +308,40 @@ window.leafletInterop = {
         window._markers.push(marker);
     },
 
-    // Hide all train markers except the selected one
+    // Hide all train markers except the selected one (updated for smooth animations)
     hideOtherTrains: function(selectedTrainNumber) {
-        if (!window._markers) return;
-        
-        window._markers.forEach(marker => {
-            if (marker.trainNumber !== selectedTrainNumber) {
-                marker.setOpacity(0);
+        if (window._trainMarkersMap) {
+            for (let [trainNumber, marker] of window._trainMarkersMap) {
+                if (trainNumber !== selectedTrainNumber) {
+                    marker.setOpacity(0);
+                }
             }
-        });
+        }
+        
+        // Fallback for old marker system
+        if (window._markers) {
+            window._markers.forEach(marker => {
+                if (marker.trainNumber !== selectedTrainNumber) {
+                    marker.setOpacity(0);
+                }
+            });
+        }
     },
 
-    // Show all train markers
+    // Show all train markers (updated for smooth animations)
     showAllTrains: function() {
-        if (!window._markers) return;
+        if (window._trainMarkersMap) {
+            for (let [trainNumber, marker] of window._trainMarkersMap) {
+                marker.setOpacity(1);
+            }
+        }
         
-        window._markers.forEach(marker => {
-            marker.setOpacity(1);
-        });
+        // Fallback for old marker system
+        if (window._markers) {
+            window._markers.forEach(marker => {
+                marker.setOpacity(1);
+            });
+        }
     },
 
     // Draw a track on the map with stations
@@ -500,18 +683,6 @@ window.leafletInterop = {
         this.map.addControl(window._delayLegend);
     },
 
-    // Draw a track on the map with stations (fallback for backward compatibility)
-    drawTrack: function(latlngs, stationNames, stations) {
-        // Convert old format to new format and call the delay-aware method
-        const coordinatesWithDelay = latlngs.map(coord => ({
-            lat: Array.isArray(coord) ? coord[0] : coord.lat,
-            lng: Array.isArray(coord) ? coord[1] : coord.lng,
-            delay: 0 // Default to no delay for backward compatibility
-        }));
-        
-        this.drawTrackWithDelay(coordinatesWithDelay, stationNames, stations);
-    },
-
     // Helper function to get station color based on position and delays
     getStationColor: function(station, index, totalStations) {
         // Color based on delays
@@ -631,15 +802,37 @@ window.leafletInterop = {
         }
     },
 
-    // Clear all markers from the map
+    // Clear all markers from the map with proper cleanup
     clearMarkers: function() {
-        if (!window._markers) return;
-
-        for (var i = 0; i < window._markers.length; i++) {
-            this.map.removeLayer(window._markers[i]);
+        // Clean up old marker system
+        if (window._markers) {
+            for (var i = 0; i < window._markers.length; i++) {
+                var marker = window._markers[i];
+                // Cancel any ongoing animations
+                if (marker._animationId) {
+                    cancelAnimationFrame(marker._animationId);
+                }
+                this.map.removeLayer(marker);
+            }
+            window._markers = [];
         }
-
-        window._markers = [];
+        
+        // Clean up smooth animation marker system
+        if (window._trainMarkersMap) {
+            for (let [trainNumber, marker] of window._trainMarkersMap) {
+                // Cancel any ongoing animations
+                if (marker._animationId) {
+                    cancelAnimationFrame(marker._animationId);
+                }
+                this.map.removeLayer(marker);
+            }
+            window._trainMarkersMap.clear();
+        }
+        
+        // Clear dotNet references
+        if (window._dotNetRefs) {
+            window._dotNetRefs.clear();
+        }
     },
     
     // Show loading indicator on the map
