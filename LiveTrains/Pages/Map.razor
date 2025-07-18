@@ -32,8 +32,9 @@
             @{
                 var gpsTrains = trainPositions.Count(t => t.HasGps);
                 var totalTrains = trainPositions.Count;
+                var trainsWithSpeed = trainPositions.Count(t => t.AverageSpeedKmh > 0);
             }
-            Trains: @totalTrains | GPS: @gpsTrains (@((gpsTrains * 100.0 / totalTrains).ToString("F0"))%)
+            Trains: @totalTrains | GPS: @gpsTrains (@((gpsTrains * 100.0 / totalTrains).ToString("F0"))%) | Speed: @trainsWithSpeed
         </div>
     }
 </div>
@@ -65,23 +66,84 @@
     // Store the currently selected train for highlighting
     private string? selectedTrainNumber;
 
-    protected override void OnInitialized()
-    {
-        TrainTrackingService.OnTrainPositionsUpdated += positions =>
-        {
-            trainPositions = positions;
-            InvokeAsync(StateHasChanged);
-            UpdateTrainMarkersOnMap();
-        };
-        TrainTrackingService.StartAsync();
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            _objectReference = DotNetObjectReference.Create(this);
-            await InitializeMapAsync();
+            try
+            {
+                // Ensure we dispose any existing reference
+                _objectReference?.Dispose();
+                
+                // Create new DotNetObjectReference
+                _objectReference = DotNetObjectReference.Create(this);
+                
+                Console.WriteLine("DotNetObjectReference created successfully");
+                
+                // Initialize the map
+                await InitializeMapAsync();
+                
+                // Give the map a moment to initialize before updating markers
+                await Task.Delay(500);
+                
+                // Update markers if we have positions
+                if (trainPositions.Count > 0)
+                {
+                    await UpdateTrainMarkersOnMap();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in OnAfterRenderAsync: {ex.Message}");
+            }
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            TrainTrackingService.OnTrainPositionsUpdated += async positions =>
+            {
+                try
+                {
+                    trainPositions = positions ?? new List<TrainPosition>();
+                    await InvokeAsync(StateHasChanged);
+                    
+                    // Only update markers if we have a valid object reference
+                    if (_objectReference != null)
+                    {
+                        await InvokeAsync(UpdateTrainMarkersOnMap);
+                    }
+                    
+                    // Pre-warm cache for visible trains in the background
+                    if (positions?.Count > 0)
+                    {
+                        var visibleTrainNumbers = positions.Take(10).Select(p => p.Number).ToList();
+                        _ = Task.Run(async () => 
+                        {
+                            try
+                            {
+                                await TrainTrackingService.PreWarmCacheForVisibleTrains(visibleTrainNumbers);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error pre-warming cache: {ex.Message}");
+                            }
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error handling train positions update: {ex.Message}");
+                }
+            };
+            
+            TrainTrackingService.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in OnInitialized: {ex.Message}");
         }
     }
 
@@ -94,46 +156,41 @@
         }
     }
 
-    private async Task InitializeMapAsync()
-    {
-        try
-        {
-            await JSRuntime.InvokeVoidAsync(
-                "leafletInterop.initializeMap", 
-                "mapId", 
-                Latitude, 
-                Longitude, 
-                ZoomLevel
-            );
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error initializing map: {ex.Message}");
-        }
-    }
-
     // Add this method to handle train marker clicks
     [JSInvokable]
     public async Task OnTrainMarkerClicked(string trainNumber)
     {
+        if (string.IsNullOrEmpty(trainNumber))
+        {
+            Console.WriteLine("OnTrainMarkerClicked: Invalid train number");
+            return;
+        }
+
         Console.WriteLine($"Train clicked: {trainNumber}");
         selectedTrainNumber = trainNumber;
         
+        // Use cancellation token to prevent hanging operations
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30 second timeout
+        
         try 
         {
-            // Show loading state
-            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", true);
+            // Show loading state immediately
+            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", cts.Token, true);
             
             // Hide other trains when one is selected
-            await JSRuntime.InvokeVoidAsync("leafletInterop.hideOtherTrains", trainNumber);
+            await JSRuntime.InvokeVoidAsync("leafletInterop.hideOtherTrains", cts.Token, trainNumber);
             
-            // Get detailed train information
-            currentTrainDetails = await TrainTrackingService.GetTrainDetailsAsync(trainNumber);
+            // Use the new combined method for better performance
+            var (trainDetails, trackInfo) = await TrainTrackingService.GetTrainDetailsAndTrackAsync(trainNumber);
             
+            if (cts.Token.IsCancellationRequested)
+            {
+                Console.WriteLine("Operation cancelled due to timeout");
+                return;
+            }
+            
+            currentTrainDetails = trainDetails;
             Console.WriteLine($"Train details loaded: {currentTrainDetails?.Number}");
-            
-            // Get and draw the train track
-            var trackInfo = await TrainTrackingService.GetTrainTrackAsync(trainNumber);
             
             if (trackInfo != null && trackInfo.Coordinates.Count > 0)
             {
@@ -143,21 +200,21 @@
                 // Prepare station data for JavaScript
                 var stationsForJS = trackInfo.Stations.Select(s => new
                 {
-                    name = s.Name,
+                    name = s.Name ?? "",
                     latitude = s.Latitude,
                     longitude = s.Longitude,
-                    platform = s.Platform,
-                    transportType = s.TransportType,
-                    scheduledArrival = s.ScheduledArrival,
-                    actualArrival = s.ActualArrival,
+                    platform = s.Platform ?? "",
+                    transportType = s.TransportType ?? "",
+                    scheduledArrival = s.ScheduledArrival ?? "",
+                    actualArrival = s.ActualArrival ?? "",
                     arrivalDelay = s.ArrivalDelay,
-                    scheduledDeparture = s.ScheduledDeparture,
-                    actualDeparture = s.ActualDeparture,
+                    scheduledDeparture = s.ScheduledDeparture ?? "",
+                    actualDeparture = s.ActualDeparture ?? "",
                     departureDelay = s.DepartureDelay,
-                    additionalInfo = s.AdditionalInfo,
-                    messages = s.Messages,
-                    notices = s.Notices,
-                    warnings = s.Warnings
+                    additionalInfo = s.AdditionalInfo ?? new List<string>(),
+                    messages = s.Messages ?? new List<string>(),
+                    notices = s.Notices ?? new List<string>(),
+                    warnings = s.Warnings ?? new List<string>()
                 }).ToArray();
                 
                 // Prepare coordinates with delay information for JavaScript
@@ -170,8 +227,9 @@
                 
                 // Draw track on map with station names, stations, and delay information
                 await JSRuntime.InvokeVoidAsync("leafletInterop.drawTrackWithDelay", 
+                    cts.Token,
                     coordinatesWithDelayForJS,
-                    new { start = trackInfo.StartStationName, end = trackInfo.EndStationName },
+                    new { start = trackInfo.StartStationName ?? "", end = trackInfo.EndStationName ?? "" },
                     stationsForJS);
             }
             else
@@ -179,27 +237,50 @@
                 Console.WriteLine("No track data received or empty track data");
             }
             
-            // Hide loading indicator
-            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", false);
-            
             Console.WriteLine($"Train details set to: {currentTrainDetails != null}");
             
             // Trigger UI update
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Operation was cancelled due to timeout");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error: {jsEx.Message}");
         }
         catch (Exception ex) 
         {
             Console.WriteLine($"Error fetching train data: {ex.Message}");
             Console.WriteLine($"Exception details: {ex}");
-            await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", false);
+        }
+        finally
+        {
+            try
+            {
+                // Always hide loading indicator
+                await JSRuntime.InvokeVoidAsync("leafletInterop.showLoadingIndicator", CancellationToken.None, false);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error hiding loading indicator: {ex.Message}");
+            }
         }
         
         // Update train markers to highlight the selected train
-        UpdateTrainMarkersOnMap();
+        try
+        {
+            await UpdateTrainMarkersOnMap();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating train markers: {ex.Message}");
+        }
     }
 
-    // Update train markers to be clickable
-    private void UpdateTrainMarkersOnMap()
+    // Update train markers to be clickable with speed-based movement
+    private async Task UpdateTrainMarkersOnMap()
     {
         try
         {
@@ -209,23 +290,38 @@
                 return;
             }
             
-            // Use the new smooth animation method instead of clearing and recreating markers
+            // Use the new smooth animation method with speed information
             var trainData = trainPositions.Select(train => new
             {
-                number = train.Number,
+                number = train.Number ?? "",
                 latitude = train.Latitude,
                 longitude = train.Longitude,
-                type = train.Type,
-                hasGps = train.HasGps
+                type = train.Type ?? "",
+                hasGps = train.HasGps,
+                averageSpeedKmh = train.AverageSpeedKmh,
+                speedCategory = train.SpeedCategory ?? "Unknown",
+                lastUpdated = train.LastUpdated.ToString("yyyy-MM-ddTHH:mm:ss.fffZ") // ISO format for JavaScript
             }).ToArray();
 
             var hideOthers = !string.IsNullOrEmpty(selectedTrainNumber);
             
-            Console.WriteLine($"Updating {trainData.Length} train markers, hideOthers: {hideOthers}, selected: {selectedTrainNumber}");
+            Console.WriteLine($"Updating {trainData.Length} train markers with speed data, hideOthers: {hideOthers}, selected: {selectedTrainNumber}");
             
-            // Call the smooth update method with the DotNetObjectReference
-            JSRuntime.InvokeVoidAsync("leafletInterop.updateTrainPositionsSmooth", 
+            // Use timeout for JSInterop calls
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            
+            // Call the smooth update method with speed information
+            await JSRuntime.InvokeVoidAsync("leafletInterop.updateTrainPositionsSmooth", 
+                cts.Token,
                 trainData, selectedTrainNumber, hideOthers, _objectReference);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("UpdateTrainMarkersOnMap operation timed out");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error in UpdateTrainMarkersOnMap: {jsEx.Message}");
         }
         catch (Exception ex)
         {
@@ -233,16 +329,121 @@
         }
     }
 
+    // Clear train details and track when no longer needed
+    private async Task ClearTrainDetails()
+    {
+        currentTrainDetails = null;
+        await ClearTrackAsync();
+        
+        try
+        {
+            // Show all trains again when details are closed
+            await JSRuntime.InvokeVoidAsync("leafletInterop.showAllTrains");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error in ClearTrainDetails: {jsEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in ClearTrainDetails: {ex.Message}");
+        }
+        
+        // Update markers to remove selection highlighting
+        await UpdateTrainMarkersOnMap();
+    }
+
+    // Clear the track when no longer needed
+    public async Task ClearTrackAsync()
+    {
+        currentTrack = null;
+        selectedTrainNumber = null;
+        
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("leafletInterop.clearTrack");
+            
+            // Clear the smooth animation markers and recreate them to ensure proper state
+            await JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
+            await UpdateTrainMarkersOnMap();
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error in ClearTrackAsync: {jsEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in ClearTrackAsync: {ex.Message}");
+        }
+    }
+
+    private async Task InitializeMapAsync()
+    {
+        const int maxRetries = 3;
+        int retryCount = 0;
+        
+        while (retryCount < maxRetries)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                
+                await JSRuntime.InvokeVoidAsync(
+                    "leafletInterop.initializeMap",
+                    cts.Token,
+                    "mapId", 
+                    Latitude, 
+                    Longitude, 
+                    ZoomLevel
+                );
+                
+                Console.WriteLine("Map initialized successfully");
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"Map initialization timed out (attempt {retryCount + 1}/{maxRetries})");
+            }
+            catch (JSException jsEx)
+            {
+                Console.WriteLine($"JavaScript error initializing map (attempt {retryCount + 1}/{maxRetries}): {jsEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error initializing map (attempt {retryCount + 1}/{maxRetries}): {ex.Message}");
+            }
+            
+            retryCount++;
+            if (retryCount < maxRetries)
+            {
+                await Task.Delay(1000); // Wait 1 second before retry
+            }
+        }
+        
+        Console.WriteLine("Failed to initialize map after all retries");
+    }
+
     public async Task AddMarkerAsync(double lat, double lng, string? title = null)
     {
         try
         {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            
             await JSRuntime.InvokeVoidAsync(
-                "leafletInterop.addMarker", 
+                "leafletInterop.addMarker",
+                cts.Token,
                 lat, 
                 lng, 
                 title
             );
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("AddMarkerAsync operation timed out");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error adding marker: {jsEx.Message}");
         }
         catch (Exception ex)
         {
@@ -254,12 +455,23 @@
     {
         try
         {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            
             await JSRuntime.InvokeVoidAsync(
-                "leafletInterop.setView", 
+                "leafletInterop.setView",
+                cts.Token,
                 lat, 
                 lng, 
                 zoom
             );
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("SetViewAsync operation timed out");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error setting view: {jsEx.Message}");
         }
         catch (Exception ex)
         {
@@ -271,57 +483,22 @@
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("leafletInterop.invalidateSize");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            
+            await JSRuntime.InvokeVoidAsync("leafletInterop.invalidateSize", cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("InvalidateSizeAsync operation timed out");
+        }
+        catch (JSException jsEx)
+        {
+            Console.WriteLine($"JavaScript error invalidating size: {jsEx.Message}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error invalidating size: {ex.Message}");
         }
-    }
-
-    // Clear train details and track when no longer needed
-    private async Task ClearTrainDetails()
-    {
-        currentTrainDetails = null;
-        await ClearTrackAsync();
-        
-        // Show all trains again when details are closed
-        await JSRuntime.InvokeVoidAsync("leafletInterop.showAllTrains");
-        
-        // Update markers to remove selection highlighting
-        UpdateTrainMarkersOnMap();
-    }
-
-    // Clear the track when no longer needed
-    public async Task ClearTrackAsync()
-    {
-        currentTrack = null;
-        selectedTrainNumber = null;
-        await JSRuntime.InvokeVoidAsync("leafletInterop.clearTrack");
-        
-        // Clear the smooth animation markers and recreate them to ensure proper state
-        await JSRuntime.InvokeVoidAsync("leafletInterop.clearMarkers");
-        UpdateTrainMarkersOnMap();
-    }
-
-    private string GetCarrierIconUrl(string carrier)
-    {
-        // Map carrier codes to icon URLs - same as before
-        return carrier switch
-        {
-            "IC" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTudaL7viYZdPkjE6I_ae3dROs1ZARywfz1ISyvzNNxKMg7B0l1XxTOiCb5R93_",
-            "PR" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcShBZqpAHnRCy4-XJFYOpT1FB7Z9Hi3AMbR8Dogpsnj5lG4NH1tndbWIVAJsxYO",
-            "KW" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSx1jf6nxAv6vG8Eh8GMeG6M4QVvs-sd_oqEW9gtggssgWzkHFrrm4_lq6vEjB9",
-            "AR" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTV5nvINCi-sHP3nq4DfyqnlCPvMWMoWScdUMgq3rf3Sqt1S9pTy2dY31zqILcJ",
-            "KS" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT812gFd2fScPbg1H8WTcLSSdPLr9lfUpW3CfGb3Q24v-rwiqCK3gHvTyGZi28_",
-            "KD" => "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSWEd1ADcEp8OZEuCBKqCP5RrO3ofo6YMASk1qUMNkLvTi59oOPR6myIBVeIlw",
-            "KM" => "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSpnufJ7waXBOck26ADz0COZAuDGD13FnNYYj5gVIdegrdv_FgJiDiyL1eJN9_x",
-            "SKM" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRv1Cf4wQJ3iw5a0amylbxcWOyhsH4nRQ00QgSmiLxgifYYUFOjsvHhwWvmp1db",
-            "SKMT" => "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4tnUGPLmH0JGcxnChJETsYDw5nIj8Wcol00Jdl-T5qTTpHSEPPiT3FWRuxNdu",
-            "£KA" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSVlWBUS9YeV2_oQsB3-ldmOtT_DIFZAlxeCAGObCN_vaU4bbjBkwXGhBKk-4Fq",
-            "KM£" => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw",
-            _ => "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX-16d"
-        };
     }
 
     // Toggle GPS filter
@@ -359,11 +536,25 @@
 
     async ValueTask IAsyncDisposable.DisposeAsync()
     {
-        if (_module is not null)
+        try
         {
-            await _module.DisposeAsync();
+            if (_module is not null)
+            {
+                await _module.DisposeAsync();
+            }
         }
-
-        _objectReference?.Dispose();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing module: {ex.Message}");
+        }
+        
+        try
+        {
+            _objectReference?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing object reference: {ex.Message}");
+        }
     }
 }

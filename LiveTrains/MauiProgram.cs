@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace LiveTrains
 {
@@ -15,8 +16,13 @@ namespace LiveTrains
                 });
 
             builder.Services.AddMauiBlazorWebView();
+            
+            // Register HttpClient for services
+            builder.Services.AddSingleton<System.Net.Http.HttpClient>();
+            
+            // Register train tracking services
             builder.Services.AddSingleton<LiveTrains.Services.LiveTrainTrackingService>();
-
+            builder.Services.AddScoped<LiveTrains.Services.TrainDetailsService>();
 
 #if DEBUG
             builder.Services.AddBlazorWebViewDeveloperTools();

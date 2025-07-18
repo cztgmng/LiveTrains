@@ -66,6 +66,34 @@ html, body {
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     /* Ensure markers are clickable */
     pointer-events: auto !important;
+    transition: all 0.2s ease;
+}
+
+/* Speed-based train marker styling */
+.leaflet-marker-icon.train-marker-slow {
+    filter: drop-shadow(0 0 4px #ff6b6b) !important;
+}
+
+.leaflet-marker-icon.train-marker-moderate {
+    filter: drop-shadow(0 0 4px #ffd93d) !important;
+}
+
+.leaflet-marker-icon.train-marker-fast {
+    filter: drop-shadow(0 0 4px #6bcf7f) !important;
+}
+
+.leaflet-marker-icon.train-marker-high-speed {
+    filter: drop-shadow(0 0 4px #4dabf7) !important;
+}
+
+.leaflet-marker-icon.train-marker-unknown {
+    filter: drop-shadow(0 0 4px #868e96) !important;
+}
+
+/* Enhanced train marker glow effect */
+.leaflet-marker-icon:hover {
+    transform: scale(1.1);
+    filter: brightness(1.1) !important;
 }
 
 .map-loading-bg {
@@ -155,11 +183,73 @@ html, body {
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 12px;
-    max-width: 200px;
+    max-width: 250px;
     /* Allow text selection in status */
     user-select: text;
     -webkit-user-select: text;
     pointer-events: auto;
+}
+
+/* Speed Legend */
+.speed-legend {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    min-width: 140px;
+    pointer-events: auto;
+}
+
+.speed-legend h4 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.speed-legend-item {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+    gap: 8px;
+}
+
+.speed-legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 6px currentColor;
+}
+
+.speed-legend-color.slow {
+    background: #ff6b6b;
+    color: #ff6b6b;
+}
+
+.speed-legend-color.moderate {
+    background: #ffd93d;
+    color: #ffd93d;
+}
+
+.speed-legend-color.fast {
+    background: #6bcf7f;
+    color: #6bcf7f;
+}
+
+.speed-legend-color.high-speed {
+    background: #4dabf7;
+    color: #4dabf7;
+}
+
+.speed-legend-color.unknown {
+    background: #868e96;
+    color: #868e96;
 }
 
 /* Delay Legend Styling */
@@ -284,6 +374,60 @@ html, body {
 
 .leaflet-popup-content-wrapper {
     pointer-events: auto !important;
+}
+
+/* Enhanced train popup styling with speed information */
+.train-popup {
+    min-width: 180px;
+    user-select: text;
+    -webkit-user-select: text;
+    pointer-events: auto;
+}
+
+.train-popup .train-number {
+    font-weight: bold;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.train-popup .train-speed {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 2px;
+}
+
+.train-popup .train-category {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-block;
+    font-weight: 500;
+}
+
+.train-popup .train-category.slow {
+    background: #ff6b6b;
+    color: white;
+}
+
+.train-popup .train-category.moderate {
+    background: #ffd93d;
+    color: #333;
+}
+
+.train-popup .train-category.fast {
+    background: #6bcf7f;
+    color: white;
+}
+
+.train-popup .train-category.high-speed {
+    background: #4dabf7;
+    color: white;
+}
+
+.train-popup .train-category.unknown {
+    background: #868e96;
+    color: white;
 }
 
 /* Ensure all controls remain interactive */
