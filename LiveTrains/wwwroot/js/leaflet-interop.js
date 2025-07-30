@@ -288,30 +288,39 @@ window.leafletInterop = {
                         var currentAnchor = isSelected ? [24, 24] : [16, 16];
                         var currentZIndex = isSelected ? 1000 : 0;
                         
-                        var newIcon = L.icon({
-                            iconUrl: iconUrl,
-                            iconSize: [currentIconSize, currentIconSize],
-                            iconAnchor: currentAnchor,
-                            popupAnchor: [0, -16]
-                        });
-                        
-                        marker.setIcon(newIcon);
-                        marker.setZIndexOffset(currentZIndex);
-                        marker.setOpacity(1);
-                        
-                        // Update popup content with speed information
-                        if (marker.getPopup()) {
+                        // Only update icon if changed
+                        var prevIconUrl = marker.options.icon && marker.options.icon.options && marker.options.icon.options.iconUrl;
+                        var prevIconSize = marker.options.icon && marker.options.icon.options && marker.options.icon.options.iconSize;
+                        var needIconUpdate = prevIconUrl !== iconUrl || !prevIconSize || prevIconSize[0] !== currentIconSize;
+                        if (needIconUpdate) {
+                            var newIcon = L.icon({
+                                iconUrl: iconUrl,
+                                iconSize: [currentIconSize, currentIconSize],
+                                iconAnchor: currentAnchor,
+                                popupAnchor: [0, -16]
+                            });
+                            marker.setIcon(newIcon);
+                        }
+                        // Only update zIndex if changed
+                        if (marker.options.zIndexOffset !== currentZIndex) {
+                            marker.setZIndexOffset(currentZIndex);
+                        }
+                        // Only update opacity if hidden
+                        if (marker.options.opacity !== 1) {
+                            marker.setOpacity(1);
+                        }
+                        // Only update popup content if changed
+                        if (marker.getPopup() && marker.getPopup().getContent() !== trainTitle) {
                             marker.getPopup().setContent(trainTitle);
                         }
-                        
-                        // Add speed-based visual indicator (colored border)
+                        // Add speed-based visual indicator (colored border) only if color changed
                         if (train.speedCategory && train.speedCategory !== 'Unknown') {
                             var speedColor = this.getSpeedColor(train.speedCategory);
-                            setTimeout(() => {
-                                if (marker.getElement()) {
-                                    marker.getElement().style.filter = `drop-shadow(0 0 3px ${speedColor})`;
-                                }
-                            }, 50);
+                            var el = marker.getElement();
+                            if (el && el._lastSpeedColor !== speedColor) {
+                                el.style.filter = `drop-shadow(0 0 2px ${speedColor}) drop-shadow(0 0 12px ${speedColor})`;
+                                el._lastSpeedColor = speedColor;
+                            }
                         }
                         
                         // Ensure click event is attached (in case it wasn't before)
@@ -358,7 +367,7 @@ window.leafletInterop = {
                             // We'll apply the style after the marker is added to the map
                             setTimeout(() => {
                                 if (marker.getElement()) {
-                                    marker.getElement().style.filter = `drop-shadow(0 0 3px ${speedColor})`;
+                                    marker.getElement().style.filter = `drop-shadow(0 0 2px ${speedColor}) drop-shadow(0 0 12px ${speedColor})`;
                                 }
                             }, 100);
                         }
@@ -394,20 +403,21 @@ window.leafletInterop = {
     },
 
     // Helper method to get carrier icon URL
-    getCarrierIconUrl: function(carrier) {
+    getCarrierIconUrl: function (carrier) {
         switch(carrier) {
-            case "IC": return "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTudaL7viYZdPkjE6I_ae3dROs1ZARywfz1ISyvzNNxKMg7B0l1XxTOiCb5R93_";
-            case "PR": return "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcShBZqpAHnRCy4-XJFYOpT1FB7Z9Hi3AMbR8Dogpsnj5lG4NH1tndbWIVAJsxYO";
-            case "KW": return "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSx1jf6nxAv6vG8Eh8GMeG6M4QVvs-sd_oqEW9gtggssgWzkHFrrm4_lq6vEjB9";
-            case "AR": return "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTV5nvINCi-sHP3nq4DfyqnlCPvMWMoWScdUMgq3rf3Sqt1S9pTy2dY31zqILcJ";
-            case "KS": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT812gFd2fScPbg1H8WTcLSSdPLr9lfUpW3CfGb3Q24v-rwiqCK3gHvTyGZi28_";
-            case "KD": return "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTSWEd1ADcEp8OZEuCBKqCP5RrO3ofo6YMASk1qUMNkLvTi59oOPR6myIBVeIlw";
-            case "KM": return "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSpnufJ7waXBOck26ADz0COZAuDGD13FnNYYj5gVIdegrdv_FgJiDiyL1eJN9_x";
-            case "SKM": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRv1Cf4wQJ3iw5a0amylbxcWOyhsH4nRQ00QgSmiLxgifYYUFOjsvHhwWvmp1db";
-            case "SKMT": return "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT4tnUGPLmH0JGcxnChJETsYDw5nIj8Wcol00Jdl-T5qTTpHSEPPiT3FWRuxNdu";
-            case "£KA": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSVlWBUS9YeV2_oQsB3-ldmOtT_DIFZAlxeCAGObCN_vaU4bbjBkwXGhBKk-4Fq";
-            case "KM£": return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT99eNcqKKiJqnTQrn4hn00T-K7JXeKHClCJ6AcQVIzJIr_Zb3BQzjS-FuM0ydw";
-            default: return "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQp-ezcvUBGtNJzT3TLjHmPtvKRiCvurkCNlzWhxNiFaQHk9YQAQ8ZBIl_NX-16d";
+            case "IC": return "https://i.imgur.com/PmfA7tz.png";
+            case "PR": return "https://i.imgur.com/sNgU6H4.png";
+            case "KW": return "https://i.imgur.com/kD31TYF.png";
+            case "AR": return "https://i.imgur.com/M7twBR8.png";
+            case "KS": return "https://i.imgur.com/xrrZhWb.png";
+            case "KD": return "https://i.imgur.com/tepsm70.png";
+            case "KM": return "https://i.imgur.com/L7NWcFd.png";
+            case "SKM": return "https://i.imgur.com/ID3tqWH.png";
+            case "SKMT": return "https://i.imgur.com/DTA4Y0H.png";
+            case "≈ÅKA": return "https://i.imgur.com/E06bGt9.png";
+            case "KM≈Å": return "https://i.imgur.com/i0T6eWk.png";
+            case "ODEG": return "https://i.imgur.com/3HDhpCv.png";
+            default: return "https://i.imgur.com/wKEfjIH.png";
         }
     },
 
