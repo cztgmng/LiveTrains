@@ -2,6 +2,9 @@
 
 vibe coded app for real-time train tracking 🚄
 
+<img width="1054" height="610" alt="image" src="https://github.com/user-attachments/assets/5009f83a-ccd3-4c2d-91e5-4c6859a88c75" />
+
+
 ## How It Works
 
 **LiveTrains** is a cross-platform .NET MAUI app that visualizes real-time train movement and details using a modern Blazor UI and interactive map powered by Leaflet.js. Here’s an overview of its architecture and main features:
